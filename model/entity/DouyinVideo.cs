@@ -171,5 +171,23 @@ namespace dy.net.model.entity
         /// </summary>
         [SugarColumn(Length = 200, IsNullable = true)]
         public string CateXId { get; set; }
+
+        /// <summary>
+        /// 本地字幕文件路径
+        /// </summary>
+        [SugarColumn(Length = 2000, IsNullable = true)]
+        public string SubtitleSavePath { get; set; }
+
+        /// <summary>
+        /// 字幕最后生成时间
+        /// </summary>
+        [SugarColumn(IsNullable = true)]
+        public DateTime? SubtitleCreateTime { get; set; }
+
+        /// <summary>
+        /// 字幕生成状态说明
+        /// </summary>
+        [SugarColumn(Length = 500, IsNullable = true)]
+        public string SubtitleStatusMsg { get; set; }
     }
 }

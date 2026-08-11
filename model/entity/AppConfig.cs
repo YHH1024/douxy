@@ -120,6 +120,48 @@ namespace dy.net.model.entity
         /// </summary>
         [SugarColumn(IsNullable = true)]
         public bool CloseNfo { get; set; }
+
+        /// <summary>
+        /// 下载完成后自动生成本地字幕
+        /// </summary>
+        [SugarColumn(IsNullable = true)]
+        public bool AutoGenSubtitle { get; set; }
+
+        /// <summary>
+        /// 本地ASR服务地址
+        /// </summary>
+        [SugarColumn(Length = 500, IsNullable = true)]
+        public string AsrServiceUrl { get; set; }
+
+        /// <summary>
+        /// 兼容旧版本：本地ASR可执行文件路径
+        /// </summary>
+        [SugarColumn(Length = 500, IsNullable = true)]
+        public string AsrExecutablePath { get; set; }
+
+        /// <summary>
+        /// 兼容旧版本：本地ASR模型文件路径
+        /// </summary>
+        [SugarColumn(Length = 500, IsNullable = true)]
+        public string AsrModelPath { get; set; }
+
+        /// <summary>
+        /// 字幕识别语言，默认 zh
+        /// </summary>
+        [SugarColumn(Length = 50, IsNullable = true)]
+        public string AsrLanguage { get; set; }
+
+        /// <summary>
+        /// 可选提示词
+        /// </summary>
+        [SugarColumn(Length = 500, IsNullable = true)]
+        public string AsrPrompt { get; set; }
+
+        /// <summary>
+        /// 已存在字幕时是否覆盖
+        /// </summary>
+        [SugarColumn(IsNullable = true)]
+        public bool AsrOverwriteExisting { get; set; }
     }
 
 }

@@ -245,6 +245,16 @@ namespace dy.net
                 }
                 // 初始化配置
                 var config = commonService.InitConfig();
+                var asrSubtitleService = services.GetRequiredService<LocalAsrSubtitleService>();
+                var asrHealth = await asrSubtitleService.CheckHealthAsync(config);
+                if (asrHealth.Success)
+                {
+                    Serilog.Log.Information("Local ASR service is online: {ServiceUrl}", asrHealth.ServiceUrl);
+                }
+                else
+                {
+                    Serilog.Log.Warning("Local ASR service is unavailable: {Message}", asrHealth.Message);
+                }
 
                 //Serilog.Log.Debug("isRestart1=" + config.IsFirstRunning);
                 //await cookieService.UpdateCookieToSupportOldVersionAsync();

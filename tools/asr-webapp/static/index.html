@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ASR + LLM 工作台</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <div class="logo">Paraformer <span>ASR</span></div>
+    <div class="meta">
+      <span>设备: <b id="hDevice">—</b></span>
+      <span>模型: <b id="hModel">—</b></span>
+      <span>GPU: <b id="hGpu">—</b></span>
+    </div>
+    <div class="pill" id="hStatus">连接中…</div>
+    <div class="pill llm" id="hLlm"><span class="dot"></span>LLM …</div>
+  </header>
+
+  <div class="layout">
+    <!-- ===== 左列:上传 ===== -->
+    <div class="col">
+      <div class="panel">
+        <h3><span class="dot"></span>上传文件</h3>
+        <div class="dropzone" id="dropzone">
+          <div class="icon">⬆️</div>
+          <div>拖拽文件到此处,或点击选择</div>
+          <div class="formats">支持 音频(wav/mp3/flac/m4a…) 和 视频(mp4/mov/mkv…)</div>
+        </div>
+        <input type="file" id="fileInput" accept="audio/*,video/*" hidden>
+        <div class="fileinfo" id="fileinfo">
+          <div class="name" id="fiName"></div>
+          <div class="sz" id="fiSize"></div>
+        </div>
+        <button class="btn" id="btnRun" disabled>开始识别</button>
+      </div>
+
+      <div class="panel" style="flex:1">
+        <h3><span class="dot"></span>本次结果统计</h3>
+        <div class="stats">
+          <div class="stat"><div class="k">识别耗时</div><div class="v" id="stElapsed">—<small> s</small></div></div>
+          <div class="stat"><div class="k">音频时长</div><div class="v" id="stDuration">—<small> s</small></div></div>
+          <div class="stat"><div class="k">实时率 RTF</div><div class="v" id="stRtf">—</div></div>
+          <div class="stat"><div class="k">Token 数</div><div class="v" id="stChars">—</div></div>
+        </div>
+        <div class="modelinfo">
+          <div class="mi-title">模型信息</div>
+          <div class="mi-row"><span class="mi-k">模型</span><span class="mi-v" id="miName">—</span></div>
+          <div class="mi-row"><span class="mi-k">组件</span><span class="mi-v" id="miComp">—</span></div>
+          <div class="mi-row"><span class="mi-k">词表</span><span class="mi-v" id="miVocab">—</span></div>
+          <div class="mi-row"><span class="mi-k">语言</span><span class="mi-v" id="miLang">—</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 右列:监控 + 文字 + token ===== -->
+    <div class="col right-stack">
+      <!-- GPU 监控 -->
+      <div class="panel gpu-panel">
+        <h3><span class="dot" style="background:var(--accent-2)"></span>设备监控 · GPU 与 Token · 实时</h3>
+        <div class="gpu-grid">
+          <div class="chart-wrap"><canvas id="gpuChart"></canvas></div>
+          <div class="gpu-cards">
+            <div class="gcard">
+              <div class="k">GPU 利用率</div>
+              <div class="v"><span id="gUtil">0</span>%</div>
+              <div class="bar"><i id="gUtilBar"></i></div>
+            </div>
+            <div class="gcard mem">
+              <div class="k">显存占用</div>
+              <div class="v"><span id="gMemUsed">0</span><small> / <span id="gMemTotal">0</span></small></div>
+              <div class="bar"><i id="gMemBar"></i></div>
+            </div>
+            <div class="gcard temp">
+              <div class="k">温度</div>
+              <div class="v"><span id="gTemp">0</span>℃</div>
+              <div class="bar"><i id="gTempBar"></i></div>
+            </div>
+            <div class="gcard pow">
+              <div class="k">功耗</div>
+              <div class="v"><span id="gPow">0</span><small> / <span id="gPowLim">0</span> W</small></div>
+              <div class="bar"><i id="gPowBar"></i></div>
+            </div>
+          </div>
+        </div>
+        <div class="token-dash">
+          <div class="tgrid">
+            <div class="tcard"><div class="k">输出速度</div><div class="v"><span id="mTps">0</span><small> tokens/s</small></div></div>
+            <div class="tcard"><div class="k">总消耗</div><div class="v"><span id="mTokens">0</span></div></div>
+            <div class="tcard"><div class="k">推理时间</div><div class="v"><span id="mElapsed">0</span><small> s</small></div></div>
+            <div class="tcard"><div class="k">音频时长</div><div class="v"><span id="mDur">0</span><small> s</small></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 标签页:文字 / 时间轴 / 对话 / 翻译 -->
+      <div class="panel tab-panel">
+        <div class="tabs">
+          <button class="tab active" data-tab="text">识别文字</button>
+          <button class="tab" data-tab="timeline">时间轴 / 字幕</button>
+          <button class="tab" data-tab="chat">💬 对话</button>
+          <button class="tab" data-tab="translate">🌐 翻译</button>
+          <span class="tools">
+            <button class="tbtn" id="btnTxt" disabled>⬇ TXT</button>
+            <button class="tbtn" id="btnSrt" disabled>⬇ SRT</button>
+          </span>
+        </div>
+        <div class="tab-body">
+          <div class="tab-pane active" id="pane-text">
+            <div class="out placeholder" id="textOut">上传音频/视频后,识别结果将显示在此处</div>
+          </div>
+          <div class="tab-pane" id="pane-timeline">
+            <div class="out placeholder" id="timelineOut">识别后,按句显示分段时间轴(可导出 SRT 字幕)</div>
+          </div>
+
+          <div class="tab-pane" id="pane-chat">
+            <div class="chat-box">
+              <div class="chat-msgs" id="chatOut">
+                <div class="chat-empty">和 Qwen2.5-7B 多轮对话,回答流式输出</div>
+              </div>
+              <div class="chat-input-bar">
+                <textarea id="chatInput" rows="2" placeholder="输入消息,Enter 发送 / Shift+Enter 换行"></textarea>
+                <button class="btn" id="btnChatSend">发送</button>
+                <button class="tbtn" id="btnChatClear">清空</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="tab-pane" id="pane-translate">
+            <div class="translate-grid">
+              <div class="t-col">
+                <div class="t-head">源文 <button class="tbtn" id="btnFillSrc">填入识别文字</button></div>
+                <textarea id="translateSrc" rows="10" placeholder="粘贴要翻译的文字,或点上方按钮填入识别结果"></textarea>
+              </div>
+              <div class="t-col">
+                <div class="t-head">译文 <select id="translateLang" class="t-sel"><option value="中文">→ 中文</option><option value="英文">→ 英文</option><option value="日语">→ 日语</option></select></div>
+                <div class="out translate-out" id="translateOut">译文将流式显示在此处</div>
+              </div>
+            </div>
+            <div class="translate-bar">
+              <button class="btn" id="btnTranslate">开始翻译</button>
+              <button class="tbtn" id="btnCpOut" disabled>复制</button>
+              <button class="tbtn" id="btnDlTxt" disabled>⬇ TXT</button>
+              <button class="tbtn" id="btnDlSrt" disabled>⬇ 双语SRT</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

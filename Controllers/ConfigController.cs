@@ -25,10 +25,11 @@ namespace dy.net.Controllers
         private readonly DouyinFollowService douyinFollowService;
         private readonly DouyinCookieService douyinCookieService;
         private readonly DouyinHttpClientService httpClientService;
+        private readonly LocalAsrSubtitleService localAsrSubtitleService;
 
 
 
-        public ConfigController(DouyinCookieService dyCookieService, DouyinCommonService commonService, DouyinQuartzJobService quartzJobService, DouyinFollowService douyinFollowService, DouyinCookieService douyinCookieService, DouyinHttpClientService httpClientService)
+        public ConfigController(DouyinCookieService dyCookieService, DouyinCommonService commonService, DouyinQuartzJobService quartzJobService, DouyinFollowService douyinFollowService, DouyinCookieService douyinCookieService, DouyinHttpClientService httpClientService, LocalAsrSubtitleService localAsrSubtitleService)
         {
             this.dyCookieService = dyCookieService;
             this.commonService = commonService;
@@ -36,6 +37,7 @@ namespace dy.net.Controllers
             this.douyinFollowService = douyinFollowService;
             this.douyinCookieService = douyinCookieService;
             this.httpClientService = httpClientService;
+            this.localAsrSubtitleService = localAsrSubtitleService;
         }
 
 
@@ -341,6 +343,24 @@ namespace dy.net.Controllers
                 ReStartJob();
             }
             return ApiResult.Success(update);
+        }
+
+        [HttpGet("asr/health")]
+        public async Task<IActionResult> CheckAsrHealth([FromQuery] string serviceUrl = null)
+        {
+            var config = commonService.GetConfig();
+            if (!string.IsNullOrWhiteSpace(serviceUrl))
+            {
+                config ??= new AppConfig();
+                config.AsrServiceUrl = serviceUrl;
+            }
+            var result = await localAsrSubtitleService.CheckHealthAsync(config);
+            return ApiResult.Success(new
+            {
+                available = result.Success,
+                message = result.Message,
+                serviceUrl = result.ServiceUrl
+            });
         }
 
         /// <summary>

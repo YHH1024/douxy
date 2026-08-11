@@ -4,6 +4,7 @@ using dy.net.service;
 using dy.net.utils;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Text;
 
 namespace dy.net.Controllers
 {
@@ -13,11 +14,13 @@ namespace dy.net.Controllers
     {
         private readonly DouyinVideoService douyinVideoService;
         private readonly DouyinCommonService douyinCommonService;
+        private readonly LocalAsrSubtitleService localAsrSubtitleService;
 
-        public VideoController(DouyinVideoService dyCollectVideoService, DouyinCommonService douyinCommonService)
+        public VideoController(DouyinVideoService dyCollectVideoService, DouyinCommonService douyinCommonService, LocalAsrSubtitleService localAsrSubtitleService)
         {
             this.douyinVideoService = dyCollectVideoService;
             this.douyinCommonService = douyinCommonService;
+            this.localAsrSubtitleService = localAsrSubtitleService;
         }
         /// <summary>
         /// 分页查询收藏视频
@@ -351,6 +354,89 @@ namespace dy.net.Controllers
         {
             return ApiResult.Success(await douyinCommonService.GetDouyinDeleteVideos());
         }
+
+        /// <summary>
+        /// 为单个视频生成本地字幕
+        /// </summary>
+        [Authorize]
+        [HttpGet("asr/{vid}")]
+        public async Task<IActionResult> GenerateSubtitle([FromRoute] string vid, [FromQuery] bool overwrite = false)
+        {
+            var config = douyinCommonService.GetConfig();
+            var result = await localAsrSubtitleService.GenerateSubtitleByVideoIdAsync(vid, config, overwrite);
+            return result.Success
+                ? ApiResult.Success(new { subtitlePath = result.SubtitlePath, message = result.Message })
+                : ApiResult.Fail(result.Message);
+        }
+
+        /// <summary>
+        /// 批量为视频生成本地字幕
+        /// </summary>
+        [Authorize]
+        [HttpPost("asr/batch")]
+        public async Task<IActionResult> GenerateSubtitleBatch([FromBody] ReDownViedoDto dto, [FromQuery] bool overwrite = false)
+        {
+            if (dto?.Ids == null || !dto.Ids.Any())
+            {
+                return ApiResult.Fail("请先选择需要生成字幕的视频");
+            }
+
+            var config = douyinCommonService.GetConfig();
+            var result = await localAsrSubtitleService.GenerateSubtitlesByIdsAsync(dto.Ids, config, overwrite);
+            return ApiResult.Success(new
+            {
+                successCount = result.SuccessCount,
+                failedCount = result.FailedCount
+            });
+        }
+
+        /// <summary>
+        /// 读取单个视频的字幕内容
+        /// </summary>
+        [Authorize]
+        [HttpGet("asr/content/{vid}")]
+        public async Task<IActionResult> GetSubtitleContent([FromRoute] string vid)
+        {
+            if (string.IsNullOrWhiteSpace(vid))
+            {
+                return ApiResult.Fail("参数错误");
+            }
+
+            var video = await douyinVideoService.GetById(vid);
+            if (video == null)
+            {
+                return ApiResult.Fail("视频不存在");
+            }
+
+            if (string.IsNullOrWhiteSpace(video.SubtitleSavePath))
+            {
+                return ApiResult.Fail(string.IsNullOrWhiteSpace(video.SubtitleStatusMsg) ? "当前视频还没有字幕" : video.SubtitleStatusMsg);
+            }
+
+            string subtitleFullPath;
+            try
+            {
+                subtitleFullPath = Path.GetFullPath(video.SubtitleSavePath);
+            }
+            catch
+            {
+                return ApiResult.Fail("字幕路径格式非法");
+            }
+
+            if (!System.IO.File.Exists(subtitleFullPath))
+            {
+                return ApiResult.Fail($"字幕文件不存在：{subtitleFullPath}");
+            }
+
+            var content = await ReadSubtitleContentAsync(subtitleFullPath);
+            return ApiResult.Success(new
+            {
+                subtitlePath = subtitleFullPath,
+                subtitleCreateTime = video.SubtitleCreateTime,
+                statusMessage = video.SubtitleStatusMsg,
+                content
+            });
+        }
         /// <summary>
         /// 根据博主id删除博主所有视频
         /// </summary>
@@ -469,6 +555,18 @@ namespace dy.net.Controllers
             await douyinVideoService.HandOldFolderVideos();
 
             return ApiResult.Success(DateTime.Now);
+        }
+
+        private static async Task<string> ReadSubtitleContentAsync(string filePath)
+        {
+            try
+            {
+                return await System.IO.File.ReadAllTextAsync(filePath, Encoding.UTF8);
+            }
+            catch (DecoderFallbackException)
+            {
+                return await System.IO.File.ReadAllTextAsync(filePath, Encoding.Default);
+            }
         }
     }
 }

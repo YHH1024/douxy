@@ -176,6 +176,33 @@
       <div class="form-section">
         <h3 class="section-title">其他配置</h3>
 
+        <a-form-item label="Auto Subtitle" name="AutoGenSubtitle">
+          <a-switch v-model:checked="formState.AutoGenSubtitle" />
+        </a-form-item>
+        <a-form-item label="ASR Service URL" name="AsrServiceUrl">
+          <a-input v-model:value="formState.AsrServiceUrl" placeholder="http://127.0.0.1:8010" />
+          <div class="flex items-start mt-1 text-sm text-gray-500">
+            <InfoCircleOutlined class="text-blue-400 mr-1 mt-0.5" />
+            <span>Start your local FastAPI ASR service first, then dysync.net will call it over HTTP.</span>
+          </div>
+        </a-form-item>
+        <a-form-item label="ASR Status">
+          <a-space>
+            <a-tag :color="asrHealthAvailable ? 'green' : 'red'">{{ asrHealthAvailable ? 'Online' : 'Offline' }}</a-tag>
+            <span>{{ asrHealthMessage }}</span>
+            <a-button size="small" @click="checkAsrHealth" :loading="asrHealthLoading">Check ASR</a-button>
+          </a-space>
+        </a-form-item>
+        <a-form-item label="Language" name="AsrLanguage">
+          <a-input v-model:value="formState.AsrLanguage" placeholder="Default zh" style="width: 200px" />
+        </a-form-item>
+        <a-form-item label="Prompt" name="AsrPrompt">
+          <a-input v-model:value="formState.AsrPrompt" placeholder="Optional prompt for domain words" />
+        </a-form-item>
+        <a-form-item label="Overwrite Subtitle" name="AsrOverwriteExisting">
+          <a-switch v-model:checked="formState.AsrOverwriteExisting" />
+        </a-form-item>
+
         <a-form-item v-show="formState.AutoDistinct" has-feedback label="去重优先级" name="PriorityLevel" :wrapper-col="{ span: 20 }">
           <!-- Tag 拖拽容器 -->
           <div class="tag-drag-container">
@@ -293,6 +320,9 @@ const template_options = [
 // 状态定义
 const componentDisabled = ref(true);
 const downImgVideo = ref(true);
+const asrHealthLoading = ref(false);
+const asrHealthAvailable = ref(false);
+const asrHealthMessage = ref('Not checked');
 
 // 新增：悬浮菜单相关状态
 const floatMenuVisible = ref(false);
@@ -326,6 +356,11 @@ interface FormState {
   OnlySyncNew: boolean;
   VideoEncoder: number;
   CloseNfo:boolean;
+  AutoGenSubtitle: boolean;
+  AsrServiceUrl: string;
+  AsrLanguage: string;
+  AsrPrompt: string;
+  AsrOverwriteExisting: boolean;
 }
 
 // 表单初始数据
@@ -350,7 +385,12 @@ const formState: UnwrapRef<FormState> = reactive({
   KeepDynamicVideo: false, // 初始化缺失字段
   OnlySyncNew: false,
   VideoEncoder: 264,
-  CloseNfo:false
+  CloseNfo:false,
+  AutoGenSubtitle: false,
+  AsrServiceUrl: 'http://127.0.0.1:8010',
+  AsrLanguage: 'zh',
+  AsrPrompt: '',
+  AsrOverwriteExisting: false
 });
 
 // 实时计算完整模板
@@ -425,10 +465,16 @@ const getConfig = () => {
           KeepDynamicVideo: res.data.keepDynamicVideo || false, // 补充赋值
           OnlySyncNew: res.data.onlySyncNew,
           VideoEncoder: res.data.videoEncoder,
-          CloseNfo:res.data.closeNfo
+          CloseNfo:res.data.closeNfo,
+          AutoGenSubtitle: res.data.autoGenSubtitle || false,
+          AsrServiceUrl: res.data.asrServiceUrl || 'http://127.0.0.1:8010',
+          AsrLanguage: res.data.asrLanguage || 'zh',
+          AsrPrompt: res.data.asrPrompt || '',
+          AsrOverwriteExisting: res.data.asrOverwriteExisting || false
         });
 
         tagData.value = JSON.parse(res.data.priorityLevel || '[]');
+        checkAsrHealth();
       } else {
         if (res.message.indexOf('401') == -1) {
           message.error(res.message || '获取配置失败', 8);
@@ -444,6 +490,35 @@ const getConfig = () => {
 };
 
 // 模板字符串 → 占位符数组
+const checkAsrHealth = () => {
+  if (!formState.AsrServiceUrl) {
+    asrHealthAvailable.value = false;
+    asrHealthMessage.value = 'Please configure ASR service URL first';
+    return;
+  }
+
+  asrHealthLoading.value = true;
+  useApiStore()
+    .GetAsrHealth(formState.AsrServiceUrl)
+    .then((res) => {
+      if (res.code === 0) {
+        asrHealthAvailable.value = !!res.data?.available;
+        asrHealthMessage.value = res.data?.message || (res.data?.available ? 'ASR service is online' : 'ASR service is offline');
+      } else {
+        asrHealthAvailable.value = false;
+        asrHealthMessage.value = res.message || 'ASR health check failed';
+      }
+    })
+    .catch((error) => {
+      console.error('ASR health check failed:', error);
+      asrHealthAvailable.value = false;
+      asrHealthMessage.value = 'ASR health check failed';
+    })
+    .finally(() => {
+      asrHealthLoading.value = false;
+    });
+};
+
 const parseTemplateToArr = (templateStr: string | null | undefined) => {
   if (!templateStr || typeof templateStr !== 'string' || templateStr.trim() === '') {
     return [];
@@ -576,6 +651,7 @@ const onSubmit = () => {
           if (res.code === 0) {
             message.success('修改成功，同步任务将在5-10秒按新配置运行...');
             componentDisabled.value = true;
+            checkAsrHealth();
           } else {
             message.error(res.message || '更新配置失败', 8);
           }

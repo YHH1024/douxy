@@ -775,6 +775,53 @@ namespace dy.net.utils
             }
         }
 
+        /// <summary>
+        /// 从视频中抽取单声道16k wav音频，供本地ASR使用
+        /// </summary>
+        public async Task<string> ExtractAudioToWavAsync(
+            string inputVideoPath,
+            string outputAudioPath,
+            int sampleRate = 16000,
+            int channels = 1,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(inputVideoPath) || !File.Exists(inputVideoPath))
+            {
+                throw new FileNotFoundException("视频文件不存在，无法抽取音频。", inputVideoPath);
+            }
+
+            if (string.IsNullOrWhiteSpace(outputAudioPath))
+            {
+                throw new ArgumentNullException(nameof(outputAudioPath));
+            }
+
+            var outputDirectory = Path.GetDirectoryName(outputAudioPath);
+            if (!string.IsNullOrWhiteSpace(outputDirectory) && !Directory.Exists(outputDirectory))
+            {
+                Directory.CreateDirectory(outputDirectory);
+            }
+
+            var arguments = new List<string>
+            {
+                "-y",
+                "-i", inputVideoPath,
+                "-vn",
+                "-acodec", "pcm_s16le",
+                "-ar", sampleRate.ToString(CultureInfo.InvariantCulture),
+                "-ac", channels.ToString(CultureInfo.InvariantCulture),
+                outputAudioPath
+            };
+
+            await ExecuteFFmpegAsync(arguments, null, cancellationToken);
+
+            if (!File.Exists(outputAudioPath))
+            {
+                throw new InvalidOperationException("音频抽取失败，未生成wav文件。");
+            }
+
+            return outputAudioPath;
+        }
+
         public void Dispose()
         {
             _cancellationTokenSource?.Cancel();

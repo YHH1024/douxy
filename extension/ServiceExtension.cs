@@ -349,6 +349,11 @@ namespace dy.net.extension
                 client.DefaultRequestHeaders.Referrer = new Uri(DouyinRequestParamManager.DouyinHost);
                 client.Timeout = TimeSpan.FromMinutes(5); // 下载超时设为5分钟，合理且不泄漏
             }).ConfigurePrimaryHttpMessageHandler(IgnoreSslHandlerFactory);
+
+            services.AddHttpClient(LocalAsrSubtitleService.ASR_HTTP_CLIENT, client =>
+            {
+                client.Timeout = TimeSpan.FromMinutes(30);
+            });
         }
 
         /// <summary>

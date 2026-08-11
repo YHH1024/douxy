@@ -47,6 +47,10 @@ namespace dy.net.job
         /// </summary>
         private readonly DouyinMergeVideoService douyinMergeVideoService;
         /// <summary>
+        /// 本地ASR字幕生成
+        /// </summary>
+        private readonly LocalAsrSubtitleService localAsrSubtitleService;
+        /// <summary>
         /// 收藏夹、短剧、合集
         /// </summary>
         private readonly DouyinCollectCateService douyinCollectCateService;
@@ -105,6 +109,7 @@ namespace dy.net.job
             DouyinCommonService douyinCommonService,
             DouyinFollowService douyinFollowService,
             DouyinMergeVideoService douyinMergeVideoService,
+            LocalAsrSubtitleService localAsrSubtitleService,
             DouyinCollectCateService douyinCollectCateService)
         {
             this.douyinCookieService = douyinCookieService ?? throw new ArgumentNullException(nameof(douyinCookieService));
@@ -113,6 +118,7 @@ namespace dy.net.job
             this.douyinCommonService = douyinCommonService ?? throw new ArgumentNullException(nameof(douyinCommonService));
             this.douyinFollowService = douyinFollowService;
             this.douyinMergeVideoService = douyinMergeVideoService;
+            this.localAsrSubtitleService = localAsrSubtitleService;
             this.douyinCollectCateService = douyinCollectCateService;
         }
 
@@ -511,7 +517,7 @@ namespace dy.net.job
                 if (videos != null && videos.Any())
                 {
                     // 保存视频信息到数据库
-                    await SaveVideos(cookie, videos);
+                    await SaveVideos(cookie, videos, config);
                     videos.Clear();
                 }
 
@@ -1297,12 +1303,17 @@ namespace dy.net.job
         /// <param name="cookie"></param>
         /// <param name="videos">要保存的视频实体列表</param>
         /// <returns>保存成功的视频数量</returns>
-        protected async Task<int> SaveVideos(DouyinCookie cookie, List<DouyinVideo> videos)
+        protected async Task<int> SaveVideos(DouyinCookie cookie, List<DouyinVideo> videos, AppConfig config)
         {
             if (!videos.Any()) return 0;
             try
             {
                 await douyinVideoService.BatchInsertOrUpdate(videos);
+                if (config.AutoGenSubtitle)
+                {
+                    var (successCount, failedCount) = await localAsrSubtitleService.GenerateSubtitlesForVideosAsync(videos, config);
+                    Log.Debug($"[{cookie.UserName}][{VideoType.GetDesc()}]-本地字幕生成完成，成功:{successCount}，失败:{failedCount}");
+                }
                 return videos.Count;
             }
             catch (Exception ex)

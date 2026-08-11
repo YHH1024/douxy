@@ -32,6 +32,14 @@ namespace dy.net.service
                 {
                     conf.PriorityLevel = "[{\"id\":1,\"name\":\"喜欢的视频\",\"sort\":1},{\"id\":2,\"name\":\"收藏的视频\",\"sort\":2},{\"id\":3,\"name\":\"关注的视频\",\"sort\":3}]";
                 }
+                if (string.IsNullOrWhiteSpace(conf.AsrLanguage))
+                {
+                    conf.AsrLanguage = "zh";
+                }
+                if (string.IsNullOrWhiteSpace(conf.AsrServiceUrl))
+                {
+                    conf.AsrServiceUrl = "http://127.0.0.1:8010";
+                }
                 conf.IsFirstRunning = true;//标记为程序刚启动第一次运行
                 conf.AutoDistinct = true;
                 if (!conf.VideoEncoder.HasValue)
@@ -63,7 +71,11 @@ namespace dy.net.service
                     DownDynamicVideo = false,
                     KeepDynamicVideo = false,
                     MegDynamicVideo = true,
-                    VideoEncoder = 264
+                    VideoEncoder = 264,
+                    AutoGenSubtitle = false,
+                    AsrServiceUrl = "http://127.0.0.1:8010",
+                    AsrLanguage = "zh",
+                    AsrOverwriteExisting = false
                 };
                 sqlSugarClient.Insertable(config).ExecuteCommand();
                 return config;

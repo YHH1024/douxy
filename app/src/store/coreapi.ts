@@ -62,6 +62,14 @@ export const useApiStore = defineStore('coreapi', () => {
 
       });
   }
+  async function GetAsrHealth(serviceUrl = '') {
+    const query = serviceUrl ? ('?serviceUrl=' + encodeURIComponent(serviceUrl)) : '';
+    return http.request<any, Response<any>>('/api/config/asr/health' + query, 'get').then(r => {
+      return r;
+    }).finally(() => {
+
+    });
+  }
   //后台日志
   async function apiGetLogs(param: string) {
     return http.request<any, Response<any>>('/api/logs/GetLog/' + param, 'get').then(r => {
@@ -224,7 +232,30 @@ export const useApiStore = defineStore('coreapi', () => {
 
     });
   }
+  //生成单个视频字幕
+  async function GenerateSubtitle(param: string, overwrite = false) {
+    return http.request<any, Response<any>>('/api/video/asr/' + param + '?overwrite=' + overwrite, 'get').then(r => {
+      return r;
+    }).finally(() => {
+
+    });
+  }
+  //批量生成字幕
+  async function GenerateSubtitleBatch(param: object, overwrite = false) {
+    return http.request<any, Response<any>>('/api/video/asr/batch?overwrite=' + overwrite, 'post_json', param).then(r => {
+      return r;
+    }).finally(() => {
+
+    });
+  }
   //查询已删除
+  async function GetSubtitleContent(param: string) {
+    return http.request<any, Response<any>>('/api/video/asr/content/' + param, 'get').then(r => {
+      return r;
+    }).finally(() => {
+
+    });
+  }
   async function GetDeleteViedos() {
     return http.request<any, Response<any>>('/api/video/vdelete/get', 'get').then(r => {
       return r;
@@ -412,6 +443,7 @@ export const useApiStore = defineStore('coreapi', () => {
     UpdateConfig,
     apiGetConfig,
     apiUpdateConfig,
+    GetAsrHealth,
     apiGetLogs,
     apiUserInfo,
     apiChangePwd,
@@ -425,6 +457,9 @@ export const useApiStore = defineStore('coreapi', () => {
     OpenOrCloseSync,
     OpenOrCloseFullSync,
     ReDownViedos,
-    DeleteVideo
+    DeleteVideo,
+    GenerateSubtitle,
+    GenerateSubtitleBatch,
+    GetSubtitleContent
   };
 });
