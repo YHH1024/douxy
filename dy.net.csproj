@@ -106,6 +106,8 @@
   <ItemGroup>
     <Reference Include="jzc.http.lib">
       <HintPath>lib\jzc.http.lib.dll</HintPath>
+      <Private>true</Private>
+      <CopyLocal>true</CopyLocal>
     </Reference>
   </ItemGroup>
 
