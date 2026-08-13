@@ -321,15 +321,22 @@ const subtitleContent = ref<{
   subtitlePath?: string;
 }>({});
 
-/** 把单行纯文本按句末标点（。！？!?）切成段落，便于在抽屉里分行阅读 */
+/** 把单行纯文本按句末标点（。！？!?）切成句子，再每 N 句合并为一段，便于阅读 */
 const subtitleParagraphs = computed(() => {
   const raw = subtitleContent.value.content || '';
   if (!raw) return [] as string[];
-  // 按句末标点切分，保留标点，过滤空白段
-  return raw
+  const SENT_PER_PARA = 3; // 每 3 句合成一段
+  // 按句末标点切分，保留标点，过滤空白句
+  const sentences = raw
     .split(/(?<=[。！？!?])/)
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
+  // 每 SENT_PER_PARA 句合并为一段（句间用空格连）
+  const paragraphs: string[] = [];
+  for (let i = 0; i < sentences.length; i += SENT_PER_PARA) {
+    paragraphs.push(sentences.slice(i, i + SENT_PER_PARA).join(''));
+  }
+  return paragraphs;
 });
 
 /** 复制字幕全文到剪贴板 */
@@ -1593,7 +1600,7 @@ onMounted(() => {
   word-break: break-word;
 }
 .subtitle-content-box p {
-  margin: 0 0 8px 0;
+  margin: 0 0 14px 0;
 }
 .subtitle-content-box p:last-child {
   margin-bottom: 0;
