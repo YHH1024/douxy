@@ -119,16 +119,23 @@
     >
       <a-spin :spinning="subtitleDrawerLoading">
         <div v-if="subtitleContent.content">
+          <p>
+            <a-button type="primary" size="small" @click="copySubtitleContent(subtitleContent.content)">
+              <CopyOutlined /> 复制全部内容
+            </a-button>
+          </p>
           <p><strong>生成时间：</strong>{{ subtitleContent.subtitleCreateTime || '-' }}</p>
           <p>
             <strong>字幕路径：</strong>
             <span style="word-break: break-all">{{ subtitleContent.subtitlePath || '-' }}</span>
             <a-button type="link" size="small" @click="copySubtitlePath(subtitleContent.subtitlePath)">
-              <CopyOutlined /> 复制
+              复制路径
             </a-button>
           </p>
           <a-divider />
-          <pre class="subtitle-content">{{ subtitleContent.content }}</pre>
+          <div class="subtitle-content-box">
+            <p v-for="(para, idx) in subtitleParagraphs" :key="idx">{{ para }}</p>
+          </div>
         </div>
         <a-empty v-else-if="!subtitleDrawerLoading" description="暂无字幕内容" />
       </a-spin>
@@ -313,6 +320,26 @@ const subtitleContent = ref<{
   subtitleCreateTime?: string;
   subtitlePath?: string;
 }>({});
+
+/** 把单行纯文本按句末标点（。！？!?）切成段落，便于在抽屉里分行阅读 */
+const subtitleParagraphs = computed(() => {
+  const raw = subtitleContent.value.content || '';
+  if (!raw) return [] as string[];
+  // 按句末标点切分，保留标点，过滤空白段
+  return raw
+    .split(/(?<=[。！？!?])/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+});
+
+/** 复制字幕全文到剪贴板 */
+const copySubtitleContent = (text?: string) => {
+  if (!text) return;
+  navigator.clipboard?.writeText(text).then(
+    () => message.success('字幕内容已复制'),
+    () => message.warning('复制失败，请手动选择复制')
+  );
+};
 
 /** 计算某行字幕状态，供模板 a-tag 使用 */
 const subtitleStatusOf = (record: DataItem): 'unprocessed' | 'processing' | 'done' | 'error' => {
@@ -1550,6 +1577,26 @@ onMounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 字幕内容容器：分行可读，自动换行 */
+.subtitle-content-box {
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 12px 16px;
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  line-height: 1.9;
+  font-size: 14px;
+  color: #333;
+  word-break: break-word;
+}
+.subtitle-content-box p {
+  margin: 0 0 8px 0;
+}
+.subtitle-content-box p:last-child {
+  margin-bottom: 0;
 }
 
 :deep(.ant-modal-title) {

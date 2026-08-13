@@ -428,7 +428,15 @@ namespace dy.net.Controllers
                 return ApiResult.Fail($"字幕文件不存在：{subtitleFullPath}");
             }
 
-            var content = await ReadSubtitleContentAsync(subtitleFullPath);
+            // 优先读取同名纯文本文件（无时间轴、可整段复制）；不存在则退化到 .srt
+            string contentPath = subtitleFullPath;
+            string textSibling = Path.ChangeExtension(subtitleFullPath, ".txt");
+            if (System.IO.File.Exists(textSibling))
+            {
+                contentPath = textSibling;
+            }
+
+            var content = await ReadSubtitleContentAsync(contentPath);
             return ApiResult.Success(new
             {
                 subtitlePath = subtitleFullPath,
