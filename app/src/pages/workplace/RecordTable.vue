@@ -62,6 +62,15 @@
                 <close-outlined />
                 永久删除
               </a-button>
+              <a-button
+                type="primary"
+                :loading="generatingBatch"
+                @click="handleGenerateSubtitleBatch"
+                v-if="isBatchMode"
+                :disabled="selectedRowKeys.length === 0"
+              >
+                批量生成字幕
+              </a-button>
             </a-space>
           </a-form-item>
           <!-- 按钮代码 -->
@@ -99,6 +108,30 @@
           </a-list-item>
         </template>
       </a-list>
+    </a-drawer>
+    <!-- 字幕内容抽屉 -->
+    <a-drawer
+      title="字幕内容"
+      placement="right"
+      :width="520"
+      :visible="subtitleDrawerVisible"
+      @close="subtitleDrawerVisible = false"
+    >
+      <a-spin :spinning="subtitleDrawerLoading">
+        <div v-if="subtitleContent.content">
+          <p><strong>生成时间：</strong>{{ subtitleContent.subtitleCreateTime || '-' }}</p>
+          <p>
+            <strong>字幕路径：</strong>
+            <span style="word-break: break-all">{{ subtitleContent.subtitlePath || '-' }}</span>
+            <a-button type="link" size="small" @click="copySubtitlePath(subtitleContent.subtitlePath)">
+              <CopyOutlined /> 复制
+            </a-button>
+          </p>
+          <a-divider />
+          <pre class="subtitle-content">{{ subtitleContent.content }}</pre>
+        </div>
+        <a-empty v-else-if="!subtitleDrawerLoading" description="暂无字幕内容" />
+      </a-spin>
     </a-drawer>
     <!-- 视频播放弹窗 - 保持原有 -->
     <a-modal v-model:visible="isModalOpen" :width="900" :mask-closable="false" :footer="null" @cancel="handleCancel" :body-style="{ padding: '0', overflow: 'hidden', backgroundColor: '#fff' }" :style="{ 
@@ -159,11 +192,34 @@
             {{ formatVideoTitle(record.videoTitle) }}
           </a>
         </template>
+        <template v-if="column.dataIndex === 'subtitle'">
+          <a-tag v-if="subtitleStatusOf(record) === 'processing'" color="processing">转换中</a-tag>
+          <a-tag v-else-if="subtitleStatusOf(record) === 'done'" color="success">已生成</a-tag>
+          <a-tooltip v-else-if="subtitleStatusOf(record) === 'error'" :title="record.subtitleStatusMsg || '生成失败'">
+            <a-tag color="error">失败</a-tag>
+          </a-tooltip>
+          <a-tag v-else color="default">未生成</a-tag>
+        </template>
         <template v-if="column.key === 'operation'">
           <a-space size="small">
             <a-button type="link" @click="handleReDownload(record)" :disabled="isSyncing">
               <SyncOutlined />
               重新同步
+            </a-button>
+            <a-button
+              type="link"
+              :loading="generatingId === record.id"
+              :disabled="generatingBatch"
+              @click="handleGenerateSubtitle(record)"
+            >
+              {{ record.subtitleSavePath ? '重新生成字幕' : '生成字幕' }}
+            </a-button>
+            <a-button
+              v-if="record.subtitleSavePath"
+              type="link"
+              @click="handleViewSubtitle(record)"
+            >
+              查看字幕
             </a-button>
             <a-button type="link" @click="handleShare(record)" :disabled="!record.id">
               <ShareAltOutlined />
@@ -212,6 +268,10 @@ interface DataItem {
   videoSavePath: string;
   createTimeStr?: string; // 发布时间
   isMergeVideo?: boolean;
+  // ASR 字幕相关（后端列表已返回）
+  subtitleSavePath?: string;       // 非空=已生成
+  subtitleStatusMsg?: string;      // 失败原因
+  subtitleCreateTime?: string;     // 生成时间
 }
 
 // 📌 新增：排序参数类型定义
@@ -242,6 +302,25 @@ dayjs.locale('zh-cn');
 // 批量操作相关状态
 const isBatchMode = ref(false); // 批量操作开关状态
 const selectedRowKeys = ref<string[]>([]); // 选中的行ID集合
+
+// -------------------------- ASR 字幕相关状态 --------------------------
+const generatingId = ref<string>('');        // 当前单条生成中的视频 id（按钮 loading + 状态列"转换中"）
+const generatingBatch = ref(false);          // 批量生成中
+const subtitleDrawerVisible = ref(false);    // 结果抽屉
+const subtitleDrawerLoading = ref(false);
+const subtitleContent = ref<{
+  content?: string;
+  subtitleCreateTime?: string;
+  subtitlePath?: string;
+}>({});
+
+/** 计算某行字幕状态，供模板 a-tag 使用 */
+const subtitleStatusOf = (record: DataItem): 'unprocessed' | 'processing' | 'done' | 'error' => {
+  if (generatingId.value && generatingId.value === record.id) return 'processing';
+  if (record.subtitleSavePath) return 'done';
+  if (record.subtitleStatusMsg) return 'error';
+  return 'unprocessed';
+};
 // 📌 新增：排序状态管理
 const sortParams = ref<SortParam>({
   field: 'syncTime', // 默认排序字段（发布时间）
@@ -341,6 +420,12 @@ const columns = ref([
     dataIndex: 'dyUser',
     align: 'center',
     width: 120,
+  },
+  {
+    title: '字幕',
+    dataIndex: 'subtitle',
+    align: 'center',
+    width: 100,
   },
   {
     title: '操作',
@@ -896,6 +981,129 @@ const deleteBatch = (param: object) => {
   } finally {
     loading.value = false;
   }
+};
+
+// -------------------------- ASR 字幕：单条生成 --------------------------
+const handleGenerateSubtitle = (record: DataItem) => {
+  if (!record.id) {
+    message.warning('视频信息缺失');
+    return;
+  }
+  const hasSubtitle = !!record.subtitleSavePath;
+  const doGen = (overwrite: boolean) => {
+    generatingId.value = record.id!;
+    useApiStore()
+      .GenerateSubtitle(record.id!, overwrite)
+      .then((res) => {
+        generatingId.value = '';
+        if (res.code === 0) {
+          message.success('字幕生成成功');
+          GetRecords();                 // 刷新表格，拉取最新 subtitleSavePath/状态
+          handleViewSubtitle(record);   // 自动打开抽屉看结果
+        } else {
+          message.error(res.message || record.subtitleStatusMsg || '字幕生成失败');
+        }
+      })
+      .catch((err) => {
+        generatingId.value = '';
+        message.error('字幕生成失败，请稍后重试');
+        console.error('生成字幕失败：', err);
+      });
+  };
+
+  if (hasSubtitle) {
+    Modal.confirm({
+      title: '字幕已存在',
+      content: '该视频已有字幕，是否重新生成并覆盖？',
+      okText: '覆盖生成',
+      cancelText: '取消',
+      onOk: () => doGen(true),
+    });
+  } else {
+    doGen(false);
+  }
+};
+
+// -------------------------- ASR 字幕：查看内容 --------------------------
+const handleViewSubtitle = (record: DataItem) => {
+  if (!record.id) {
+    message.warning('视频信息缺失');
+    return;
+  }
+  subtitleDrawerVisible.value = true;
+  subtitleDrawerLoading.value = true;
+  subtitleContent.value = {};
+  useApiStore()
+    .GetSubtitleContent(record.id!)
+    .then((res) => {
+      subtitleDrawerLoading.value = false;
+      if (res.code === 0) {
+        subtitleContent.value = {
+          content: res.data?.content || '',
+          subtitleCreateTime: res.data?.subtitleCreateTime || record.subtitleCreateTime || '',
+          subtitlePath: res.data?.subtitlePath || record.subtitleSavePath || '',
+        };
+      } else {
+        message.error(res.message || '暂无字幕内容');
+        subtitleDrawerVisible.value = false;
+      }
+    })
+    .catch((err) => {
+      subtitleDrawerLoading.value = false;
+      subtitleDrawerVisible.value = false;
+      message.error('加载字幕内容失败');
+      console.error('加载字幕失败：', err);
+    });
+};
+
+const copySubtitlePath = (path?: string) => {
+  if (!path) return;
+  const text = (path as string).replace(/\\/g, '/');
+  navigator.clipboard?.writeText(text).then(
+    () => message.success('路径已复制'),
+    () => message.warning('复制失败，请手动复制')
+  );
+};
+
+// -------------------------- ASR 字幕：批量生成 --------------------------
+const handleGenerateSubtitleBatch = () => {
+  if (selectedRowKeys.value.length === 0) {
+    message.warning('请先选择要生成字幕的视频');
+    return;
+  }
+  const ids = selectedRowKeys.value as string[];
+  const alreadyCount = dataSource.value.filter(
+    (r: DataItem) => ids.includes(r.id || '') && r.subtitleSavePath
+  ).length;
+
+  Modal.confirm({
+    title: '确认批量生成字幕',
+    content:
+      `您确定要为选中的 ${ids.length} 条视频生成字幕吗？` +
+      (alreadyCount > 0 ? `（其中 ${alreadyCount} 条已有字幕，将覆盖）` : ''),
+    okText: '确认生成',
+    cancelText: '取消',
+    onOk: () => {
+      generatingBatch.value = true;
+      useApiStore()
+        .GenerateSubtitleBatch({ ids }, true)
+        .then((res) => {
+          generatingBatch.value = false;
+          if (res.code === 0) {
+            message.success('批量字幕生成完成');
+            GetRecords();
+            selectedRowKeys.value = [];
+          } else {
+            message.error(res.message || '批量生成失败');
+          }
+        })
+        .catch((err) => {
+          generatingBatch.value = false;
+          message.error('批量生成失败，请稍后重试');
+          console.error('批量生成字幕失败：', err);
+        });
+    },
+  });
 };
 
 /** 重新下载事件 */
