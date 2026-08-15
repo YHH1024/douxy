@@ -1536,6 +1536,11 @@ namespace dy.net.job
                 OnlyImgOrOnlyMp3 = string.IsNullOrWhiteSpace(savePath) && !config.DownImageVideo && (config.DownImage || config.DownMp3),
                 CateId = cate?.Id,
                 CateXId = cate?.XId,
+                PlayCount = item.Statistics?.PlayCount ?? 0,
+                DiggCount = item.Statistics?.DiggCount ?? 0,
+                CommentCount = item.Statistics?.CommentCount ?? 0,
+                ShareCount = item.Statistics?.ShareCount ?? 0,
+                CollectCount = item.Statistics?.CollectCount ?? 0,
             };
             if (cate != null && cate.CateType != VideoTypeEnum.dy_custom_collect)
             {
