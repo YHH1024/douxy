@@ -239,7 +239,7 @@ namespace dy.net.service
 
             try
             {
-                var transcribeResult = await TranscribeFileAsync(healthResult.ServiceUrl, video.VideoSavePath, config, cancellationToken);
+                var transcribeResult = await TranscribeFileAsync(healthResult.ServiceUrl, video.VideoSavePath, config, cancellationToken, video.VideoTitle);
                 if (!transcribeResult.Success)
                 {
                     await UpdateVideoSubtitleStateAsync(video, string.Empty, transcribeResult.Message);
@@ -297,7 +297,8 @@ namespace dy.net.service
             string serviceUrl,
             string videoPath,
             AppConfig config,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            string titleForRecord = null)
         {
             var client = _httpClientFactory.CreateClient(ASR_HTTP_CLIENT);
 
@@ -308,7 +309,14 @@ namespace dy.net.service
             using var formContent = new MultipartFormDataContent();
             formContent.Add(fileContent, "file", Path.GetFileName(videoPath));
 
-            using var request = new HttpRequestMessage(HttpMethod.Post, BuildEndpoint(serviceUrl, "/api/transcribe"))
+            // 带 display=title(视频标题)供 ASR 任务记录展示,替代磁盘文件名(可能乱码)
+            var endpoint = BuildEndpoint(serviceUrl, "/api/transcribe");
+            if (!string.IsNullOrWhiteSpace(titleForRecord))
+            {
+                endpoint += (endpoint.Contains('?') ? "&" : "?") + "title=" + Uri.EscapeDataString(titleForRecord);
+            }
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
             {
                 Content = formContent
             };
