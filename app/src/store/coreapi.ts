@@ -256,6 +256,14 @@ export const useApiStore = defineStore('coreapi', () => {
 
     });
   }
+  //回填统计数据
+  async function BackfillVideoStats() {
+    return http.request<any, Response<any>>('/api/video/stats/backfill', 'post_json', {}).then(r => {
+      return r;
+    }).finally(() => {
+
+    });
+  }
   async function GetDeleteViedos() {
     return http.request<any, Response<any>>('/api/video/vdelete/get', 'get').then(r => {
       return r;
@@ -444,6 +452,7 @@ export const useApiStore = defineStore('coreapi', () => {
     apiGetConfig,
     apiUpdateConfig,
     GetAsrHealth,
+    BackfillVideoStats,
     apiGetLogs,
     apiUserInfo,
     apiChangePwd,

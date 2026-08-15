@@ -202,6 +202,10 @@
         <a-form-item label="Overwrite Subtitle" name="AsrOverwriteExisting">
           <a-switch v-model:checked="formState.AsrOverwriteExisting" />
         </a-form-item>
+        <a-form-item label="视频统计">
+          <a-button :loading="backfillLoading" @click="handleBackfillStats">回填统计数据</a-button>
+          <span style="margin-left: 8px; color: #888; font-size: 12px">为已同步视频补齐播放/点赞等数据，不影响视频文件</span>
+        </a-form-item>
 
         <a-form-item v-show="formState.AutoDistinct" has-feedback label="去重优先级" name="PriorityLevel" :wrapper-col="{ span: 20 }">
           <!-- Tag 拖拽容器 -->
@@ -323,6 +327,34 @@ const downImgVideo = ref(true);
 const asrHealthLoading = ref(false);
 const asrHealthAvailable = ref(false);
 const asrHealthMessage = ref('Not checked');
+
+// 视频统计回填
+const backfillLoading = ref(false);
+const handleBackfillStats = () => {
+  Modal.confirm({
+    title: '回填统计数据',
+    content: '将重新拉取列表接口为已同步视频补齐统计数据（不动视频文件），翻页拉取约需几分钟，期间请勿频繁操作。是否继续？',
+    okText: '开始回填',
+    cancelText: '取消',
+    onOk: () => {
+      backfillLoading.value = true;
+      useApiStore()
+        .BackfillVideoStats()
+        .then((res: any) => {
+          backfillLoading.value = false;
+          if (res.code === 0) {
+            message.success(`回填完成：更新 ${res.data?.updated ?? 0} 条 / 扫描 ${res.data?.scanned ?? 0} 条`);
+          } else {
+            message.error(res.message || '回填失败');
+          }
+        })
+        .catch(() => {
+          backfillLoading.value = false;
+          message.error('回填失败，请稍后重试');
+        });
+    },
+  });
+};
 
 // 新增：悬浮菜单相关状态
 const floatMenuVisible = ref(false);

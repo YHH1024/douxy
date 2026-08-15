@@ -199,6 +199,15 @@
             {{ formatVideoTitle(record.videoTitle) }}
           </a>
         </template>
+        <template v-if="column.dataIndex === 'stats'">
+          <a-tooltip
+            v-if="record.diggCount > 0 || record.playCount > 0"
+            :title="`播放 ${formatCount(record.playCount)}\n点赞 ${formatCount(record.diggCount)}\n评论 ${formatCount(record.commentCount)}\n分享 ${formatCount(record.shareCount)}\n收藏 ${formatCount(record.collectCount)}`"
+          >
+            <span class="stats-cell">{{ formatCount(record.diggCount) }}赞 · {{ formatCount(record.commentCount) }}评</span>
+          </a-tooltip>
+          <span v-else>-</span>
+        </template>
         <template v-if="column.dataIndex === 'subtitle'">
           <a-tag v-if="subtitleStatusOf(record) === 'processing'" color="processing">转换中</a-tag>
           <a-tag v-else-if="subtitleStatusOf(record) === 'done'" color="success">已生成</a-tag>
@@ -279,6 +288,12 @@ interface DataItem {
   subtitleSavePath?: string;       // 非空=已生成
   subtitleStatusMsg?: string;      // 失败原因
   subtitleCreateTime?: string;     // 生成时间
+  // 视频统计（后端列表已返回）
+  playCount?: number;      // 播放量
+  diggCount?: number;      // 点赞
+  commentCount?: number;   // 评论
+  shareCount?: number;     // 分享
+  collectCount?: number;   // 收藏
 }
 
 // 📌 新增：排序参数类型定义
@@ -354,6 +369,14 @@ const subtitleStatusOf = (record: DataItem): 'unprocessed' | 'processing' | 'don
   if (record.subtitleSavePath) return 'done';
   if (record.subtitleStatusMsg) return 'error';
   return 'unprocessed';
+};
+
+/** 数字格式化:万/亿中文缩写 */
+const formatCount = (n?: number): string => {
+  if (!n || n <= 0) return '0';
+  if (n >= 100000000) return (n / 100000000).toFixed(1).replace(/\.0$/, '') + '亿';
+  if (n >= 10000) return (n / 10000).toFixed(1).replace(/\.0$/, '') + '万';
+  return n.toLocaleString();
 };
 // 📌 新增：排序状态管理
 const sortParams = ref<SortParam>({
@@ -460,6 +483,12 @@ const columns = ref([
     dataIndex: 'subtitle',
     align: 'center',
     width: 100,
+  },
+  {
+    title: '数据',
+    dataIndex: 'stats',
+    align: 'center',
+    width: 150,
   },
   {
     title: '操作',
@@ -1604,6 +1633,11 @@ onMounted(() => {
 }
 .subtitle-content-box p:last-child {
   margin-bottom: 0;
+}
+
+.stats-cell {
+  cursor: default;
+  white-space: nowrap;
 }
 
 :deep(.ant-modal-title) {
