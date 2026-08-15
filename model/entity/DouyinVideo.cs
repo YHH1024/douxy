@@ -189,5 +189,35 @@ namespace dy.net.model.entity
         /// </summary>
         [SugarColumn(Length = 500, IsNullable = true)]
         public string SubtitleStatusMsg { get; set; }
+
+        /// <summary>
+        /// 播放量
+        /// </summary>
+        [SugarColumn(IsNullable = true)]
+        public long? PlayCount { get; set; }
+
+        /// <summary>
+        /// 点赞数
+        /// </summary>
+        [SugarColumn(IsNullable = true)]
+        public long? DiggCount { get; set; }
+
+        /// <summary>
+        /// 评论数
+        /// </summary>
+        [SugarColumn(IsNullable = true)]
+        public long? CommentCount { get; set; }
+
+        /// <summary>
+        /// 分享数
+        /// </summary>
+        [SugarColumn(IsNullable = true)]
+        public long? ShareCount { get; set; }
+
+        /// <summary>
+        /// 收藏数
+        /// </summary>
+        [SugarColumn(IsNullable = true)]
+        public long? CollectCount { get; set; }
     }
 }

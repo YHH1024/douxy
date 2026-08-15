@@ -306,8 +306,8 @@ namespace dy.net.model.response
         //[JsonProperty("shoot_way")]
         //public string ShootWay { get; set; }
 
-        //[JsonProperty("statistics")]
-        //public Statistics Statistics { get; set; }
+        [JsonProperty("statistics")]
+        public Statistics Statistics { get; set; }
 
         //[JsonProperty("status")]
         //public Status Status { get; set; }
@@ -1282,10 +1282,36 @@ namespace dy.net.model.response
         [JsonProperty("video")]
         public Video DynamicVideo { get; set; }
         /// <summary>
-        /// 
+        ///
         /// </summary>
         [JsonProperty("width")]
         public int Width { get; set; }
+    }
+
+    /// <summary>
+    /// 视频统计信息(播放/点赞/评论/分享/收藏)
+    /// </summary>
+    public class Statistics
+    {
+        /// <summary>播放量</summary>
+        [JsonProperty("play_count")]
+        public long? PlayCount { get; set; }
+
+        /// <summary>点赞数</summary>
+        [JsonProperty("digg_count")]
+        public long? DiggCount { get; set; }
+
+        /// <summary>评论数</summary>
+        [JsonProperty("comment_count")]
+        public long? CommentCount { get; set; }
+
+        /// <summary>分享数</summary>
+        [JsonProperty("share_count")]
+        public long? ShareCount { get; set; }
+
+        /// <summary>收藏数</summary>
+        [JsonProperty("collect_count")]
+        public long? CollectCount { get; set; }
     }
 
 
