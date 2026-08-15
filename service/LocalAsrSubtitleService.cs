@@ -122,6 +122,51 @@ namespace dy.net.service
             }
         }
 
+        /// <summary>ASR 按需拉起的信号文件路径(容器内,经 compose 挂载对应宿主 D:\dysync\asr-bridge)。</summary>
+        private const string AsrBridgeFlagPath = "/app/asr-bridge/start.flag";
+
+        /// <summary>
+        /// 确保 ASR 服务在线:不在线则写信号文件触发宿主 watcher 拉起,并轮询等待就绪(最长180s)。
+        /// </summary>
+        private async Task<(bool Success, string Message, string ServiceUrl)> EnsureAsrRunningAsync(
+            AppConfig config,
+            CancellationToken cancellationToken = default)
+        {
+            var health = await CheckHealthAsync(config, cancellationToken);
+            if (health.Success)
+            {
+                return (true, health.Message, health.ServiceUrl);
+            }
+
+            // 写信号文件通知宿主 watcher 拉起 ASR
+            try
+            {
+                var flagDir = Path.GetDirectoryName(AsrBridgeFlagPath);
+                if (!string.IsNullOrEmpty(flagDir))
+                {
+                    Directory.CreateDirectory(flagDir);
+                }
+                await File.WriteAllTextAsync(AsrBridgeFlagPath, DateTime.Now.ToString("O"), cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                return (false, $"ASR offline and bridge flag write failed: {ex.Message}", health.ServiceUrl);
+            }
+
+            // 轮询等待就绪:5s 间隔,最长 180s(模型加载 1-2 分钟)
+            for (var attempt = 0; attempt < 36; attempt++)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+                health = await CheckHealthAsync(config, cancellationToken);
+                if (health.Success)
+                {
+                    return (true, "ASR service started on demand.", health.ServiceUrl);
+                }
+            }
+
+            return (false, "ASR service did not become ready in 180s. Check D:\\dysync\\asr-bridge\\watcher.log on the host.", health.ServiceUrl);
+        }
+
         public async Task<(bool Success, string Message, string SubtitlePath)> GenerateSubtitleAsync(
             DouyinVideo video,
             AppConfig config,
@@ -155,7 +200,7 @@ namespace dy.net.service
                 return (true, "Subtitle already exists.", subtitlePath);
             }
 
-            var healthResult = await CheckHealthAsync(config, cancellationToken);
+            var healthResult = await EnsureAsrRunningAsync(config, cancellationToken);
             if (!healthResult.Success)
             {
                 await UpdateVideoSubtitleStateAsync(video, string.Empty, healthResult.Message);
