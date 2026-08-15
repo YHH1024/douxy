@@ -114,11 +114,41 @@ namespace dy.net.service
                 }
 
                 var healthMessage = ExtractHealthMessage(content);
-                return (true, string.IsNullOrWhiteSpace(healthMessage) ? "ASR service is online." : healthMessage, validation.ServiceUrl);
+                var detail = BuildHealthDetail(content);
+                return (true, string.IsNullOrWhiteSpace(healthMessage) ? detail : $"{healthMessage} · {detail}", validation.ServiceUrl);
             }
             catch (Exception ex)
             {
                 return (false, $"ASR service is unreachable: {ex.Message}", validation.ServiceUrl);
+            }
+        }
+
+        /// <summary>把 ASR /api/health 原始响应拼成人类可读详情(设置页展示用)。</summary>
+        private static string BuildHealthDetail(string responseText)
+        {
+            try
+            {
+                var root = JObject.Parse(responseText);
+                var device = ReadString(root, "device");
+                var gpuName = ReadString(root, "gpu_name");
+                var modelLoaded = root["model_loaded"]?.ToString();
+                var modelDir = root["model_dir_exists"]?.ToString();
+                var vramUsed = root["vram_used_mb"]?.ToString();
+                var vramTotal = root["vram_total_mb"]?.ToString();
+                var idleMin = root["idle_exit_minutes"]?.ToString();
+
+                var parts = new List<string>();
+                if (!string.IsNullOrEmpty(device)) parts.Add($"device:{device}");
+                if (!string.IsNullOrEmpty(gpuName)) parts.Add(gpuName);
+                if (!string.IsNullOrEmpty(vramUsed) && vramUsed != "0") parts.Add($"VRAM {vramUsed}/{vramTotal}MB");
+                parts.Add(modelLoaded == "True" ? "model:loaded" : "model:not-loaded");
+                parts.Add(modelDir == "True" ? "model-dir:OK" : "model-dir:MISSING");
+                if (!string.IsNullOrEmpty(idleMin) && idleMin != "0") parts.Add($"idle-exit:{idleMin}min");
+                return string.Join(" · ", parts);
+            }
+            catch
+            {
+                return "ASR service is online.";
             }
         }
 
