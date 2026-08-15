@@ -44,6 +44,9 @@
           <a-button type="primary" @click="GetRecords" class="query-button">
             <SearchOutlined />查询
           </a-button>
+          <a-button @click="handleExportExcel" :loading="exporting" class="query-button">
+            <FileExcelOutlined />导出Excel
+          </a-button>
           <a-form-item class="form-item batch-operation-item" style="margin-left:20px;">
             <a-switch v-model:checked="isBatchMode" checked-children="批量" un-checked-children="批量" class="batch-switch" />
           </a-form-item>
@@ -267,7 +270,9 @@ import {
   ClearOutlined,
   CopyOutlined,
   DeleteOutlined,
+  FileExcelOutlined,
 } from '@ant-design/icons-vue';
+import Cookie from 'js-cookie';
 
 // 类型定义
 type RangeValue = [Dayjs, Dayjs];
@@ -328,6 +333,44 @@ const selectedRowKeys = ref<string[]>([]); // 选中的行ID集合
 // -------------------------- ASR 字幕相关状态 --------------------------
 const generatingId = ref<string>('');        // 当前单条生成中的视频 id（按钮 loading + 状态列"转换中"）
 const generatingBatch = ref(false);          // 批量生成中
+
+// -------------------------- 导出 Excel --------------------------
+const exporting = ref(false);
+const handleExportExcel = async () => {
+  exporting.value = true;
+  try {
+    const token = Cookie.get('Authorization');
+    const resp = await fetch('/api/video/export/today', {
+      headers: token ? { Authorization: token } : {},
+    });
+    if (!resp.ok) {
+      message.error(`导出失败: HTTP ${resp.status}`);
+      return;
+    }
+    const blob = await resp.blob();
+    const dispo = resp.headers.get('Content-Disposition') || '';
+    // 从 filename*=UTF-8''... 或 filename=... 提取文件名,失败用默认
+    let fileName = `${new Date().getFullYear()}年${new Date().getMonth() + 1}月${new Date().getDate()}日抖小云同步数据.xlsx`;
+    try {
+      const m = dispo.match(/filename\*=(?:UTF-8'')?([^;]+)/i) || dispo.match(/filename="?([^";]+)"?/i);
+      if (m) fileName = decodeURIComponent(m[1]);
+    } catch { /* 用默认名 */ }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    message.success('导出成功');
+  } catch (err) {
+    console.error('导出失败:', err);
+    message.error('导出失败，请稍后重试');
+  } finally {
+    exporting.value = false;
+  }
+};
 const subtitleDrawerVisible = ref(false);    // 结果抽屉
 const subtitleDrawerLoading = ref(false);
 const subtitleContent = ref<{
