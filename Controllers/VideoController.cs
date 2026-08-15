@@ -433,15 +433,7 @@ namespace dy.net.Controllers
                 return ApiResult.Fail($"字幕文件不存在：{subtitleFullPath}");
             }
 
-            // 优先读取同名纯文本文件（无时间轴、可整段复制）；不存在则退化到 .srt
-            string contentPath = subtitleFullPath;
-            string textSibling = Path.ChangeExtension(subtitleFullPath, ".txt");
-            if (System.IO.File.Exists(textSibling))
-            {
-                contentPath = textSibling;
-            }
-
-            var content = await ReadSubtitleContentAsync(contentPath);
+            var content = await ReadSubtitleTextAsync(subtitleFullPath);
             return ApiResult.Success(new
             {
                 subtitlePath = subtitleFullPath,
@@ -636,6 +628,75 @@ namespace dy.net.Controllers
 
             Serilog.Log.Information("[stats/backfill] 完成: updated={Updated} scanned={Scanned}", updated, scanned);
             return ApiResult.Success(new { updated, scanned });
+        }
+
+        /// <summary>
+        /// 导出当天同步数据为 Excel(xlsx)。13 列:同步记录页列标题对应,统计数字列,字幕全文列。
+        /// </summary>
+        [Authorize]
+        [HttpGet("export/today")]
+        public async Task<IActionResult> ExportTodayExcel()
+        {
+            var all = await douyinVideoService.GetAllAsync();
+            var today = all.Where(v => v.SyncTime >= DateTime.Today).OrderBy(v => v.SyncTime).ToList();
+
+            var builder = new SimpleXlsxBuilder();
+            builder.AddHeader(new[] { "同步时间", "发布时间", "同步类型", "博主", "视频类型", "视频标题", "CK名称", "播放", "点赞", "评论", "分享", "收藏", "字幕" });
+
+            foreach (var v in today)
+            {
+                string subtitle = string.Empty;
+                if (!string.IsNullOrWhiteSpace(v.SubtitleSavePath))
+                {
+                    try { subtitle = await ReadSubtitleTextAsync(Path.GetFullPath(v.SubtitleSavePath)); }
+                    catch { subtitle = string.Empty; }
+                }
+                builder.AddRow(new object[]
+                {
+                    v.SyncTime.ToString("yyyy-MM-dd HH:mm"),
+                    v.CreateTime != default ? v.CreateTime.ToString("yyyy-MM-dd HH:mm") : string.Empty,
+                    v.ViedoType.GetDesc(),
+                    v.Author ?? string.Empty,
+                    $"{v.Tag1 ?? string.Empty} {v.Tag2 ?? string.Empty} {v.Tag3 ?? string.Empty}".Trim(),
+                    v.VideoTitle ?? string.Empty,
+                    v.DyUser ?? string.Empty,
+                    v.PlayCount ?? 0,
+                    v.DiggCount ?? 0,
+                    v.CommentCount ?? 0,
+                    v.ShareCount ?? 0,
+                    v.CollectCount ?? 0,
+                    subtitle,
+                });
+            }
+
+            var bytes = builder.Build();
+            var fileName = $"{DateTime.Now:yyyy年M月d日}抖小云同步数据.xlsx";
+            Serilog.Log.Information("[export/today] 导出 {Count} 条, 文件 {File}", today.Count, fileName);
+            return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+        }
+
+        /// <summary>读取视频字幕文本:优先同名 .txt(纯文本),退化 .srt。失败/超长截断,返回安全文本。</summary>
+        private static async Task<string> ReadSubtitleTextAsync(string subtitleFullPath)
+        {
+            try
+            {
+                string contentPath = subtitleFullPath;
+                string textSibling = Path.ChangeExtension(subtitleFullPath, ".txt");
+                if (System.IO.File.Exists(textSibling))
+                {
+                    contentPath = textSibling;
+                }
+                if (!System.IO.File.Exists(contentPath))
+                {
+                    return string.Empty;
+                }
+                var text = await ReadSubtitleContentAsync(contentPath);
+                return text.Length > 32000 ? text.Substring(0, 32000) + "…" : text;
+            }
+            catch
+            {
+                return string.Empty;
+            }
         }
 
         private static async Task<string> ReadSubtitleContentAsync(string filePath)
