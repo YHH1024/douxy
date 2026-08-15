@@ -1,5 +1,6 @@
 ﻿using dy.net.model.dto;
 using dy.net.model.entity;
+using dy.net.model.response;
 using dy.net.service;
 using dy.net.utils;
 using Microsoft.AspNetCore.Authorization;
@@ -15,12 +16,16 @@ namespace dy.net.Controllers
         private readonly DouyinVideoService douyinVideoService;
         private readonly DouyinCommonService douyinCommonService;
         private readonly LocalAsrSubtitleService localAsrSubtitleService;
+        private readonly DouyinCookieService douyinCookieService;
+        private readonly DouyinHttpClientService douyinHttpClientService;
 
-        public VideoController(DouyinVideoService dyCollectVideoService, DouyinCommonService douyinCommonService, LocalAsrSubtitleService localAsrSubtitleService)
+        public VideoController(DouyinVideoService dyCollectVideoService, DouyinCommonService douyinCommonService, LocalAsrSubtitleService localAsrSubtitleService, DouyinCookieService douyinCookieService, DouyinHttpClientService douyinHttpClientService)
         {
             this.douyinVideoService = dyCollectVideoService;
             this.douyinCommonService = douyinCommonService;
             this.localAsrSubtitleService = localAsrSubtitleService;
+            this.douyinCookieService = douyinCookieService;
+            this.douyinHttpClientService = douyinHttpClientService;
         }
         /// <summary>
         /// 分页查询收藏视频
@@ -563,6 +568,74 @@ namespace dy.net.Controllers
             await douyinVideoService.HandOldFolderVideos();
 
             return ApiResult.Success(DateTime.Now);
+        }
+
+        /// <summary>
+        /// 回填统计数据:翻页拉取喜欢列表,按AwemeId匹配库中视频,只更新五项统计字段。
+        /// 不动视频文件/标题/字幕等其他字段。安全上限50页。
+        /// </summary>
+        [Authorize]
+        [HttpPost("stats/backfill")]
+        public async Task<IActionResult> BackfillVideoStats()
+        {
+            var cookies = await douyinCookieService.GetOpendCookiesAsync(
+                x => !string.IsNullOrWhiteSpace(x.FavSavePath) && !string.IsNullOrWhiteSpace(x.SecUserId));
+            if (cookies == null || !cookies.Any())
+            {
+                return ApiResult.Fail("没有可用的 Cookie(需配置喜欢视频存储路径且已授权)");
+            }
+
+            int updated = 0, scanned = 0;
+            var random = new Random();
+
+            foreach (var cookie in cookies)
+            {
+                string cursor = "0";
+                for (var page = 0; page < 50; page++)
+                {
+                    DouyinVideoInfoResponse data;
+                    try
+                    {
+                        data = await douyinHttpClientService.SyncFavoriteVideos("20", cursor, cookie.SecUserId, cookie.Cookies);
+                    }
+                    catch (Exception ex)
+                    {
+                        Serilog.Log.Error(ex, "[stats/backfill] 拉取失败, cookie={User}", cookie.UserName);
+                        break;
+                    }
+                    if (data?.AwemeList == null || !data.AwemeList.Any())
+                    {
+                        break;
+                    }
+
+                    foreach (var item in data.AwemeList)
+                    {
+                        scanned++;
+                        var video = await douyinVideoService.GetByAwemeId(item.AwemeId);
+                        if (video == null || item.Statistics == null)
+                        {
+                            continue;
+                        }
+                        video.PlayCount = item.Statistics.PlayCount ?? 0;
+                        video.DiggCount = item.Statistics.DiggCount ?? 0;
+                        video.CommentCount = item.Statistics.CommentCount ?? 0;
+                        video.ShareCount = item.Statistics.ShareCount ?? 0;
+                        video.CollectCount = item.Statistics.CollectCount ?? 0;
+                        await douyinVideoService.UpdateOne(video);
+                        updated++;
+                    }
+
+                    if (data.HasMore != 1)
+                    {
+                        break;
+                    }
+                    cursor = data.Cursor ?? (data.MaxCursor ?? "0");
+                    await Task.Delay(random.Next(2, 10) * 1000);
+                }
+            }
+
+            Serilog.Log.Information("[stats/backfill] 完成: updated={Updated} scanned={Scanned}", updated, scanned);
+            return ApiResult.Success(new { updated, scanned });
         }
 
         private static async Task<string> ReadSubtitleContentAsync(string filePath)
