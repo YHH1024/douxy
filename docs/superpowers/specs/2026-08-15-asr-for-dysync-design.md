@@ -32,7 +32,7 @@ D:\ASR-For-Dysync\
 - 内存任务表保留（热数据 + 兼容 live-platform 轮询契约不改）
 - 任务终态（success/failed）时追加一行 JSON 到 `data/jobs.json`：
   ```json
-  {"task_id":123,"ts":"2026-08-15T15:30:00","source":"dysync","file":"视频名.mp4","status":2,"cost_sec":12.4,"chars":856,"error":null}
+  {"task_id":123,"ts":"2026-08-15T15:30:00","source":"dysync","file":"视频名.mp4","status":2,"cost_sec":12.4,"token_count":856,"error":null}
   ```
 - 同步转写（`POST /api/transcribe`，抖小云走的路径）也记录：app.py 在转写完成后直接追加同样结构（source 区分 `dysync-sync`/`panel-upload`/`async-job`）
 - 新端点 `GET /api/jobs/list?limit=100`：读 jobs.json 尾部 N 条（倒序），带统计（今日成功/失败/平均耗时）
@@ -40,9 +40,12 @@ D:\ASR-For-Dysync\
 
 ### ② 面板任务页（static/）
 
-- 现有面板（GPU 监控 + 手动转写）顶部加 tab：「GPU 监控」/「任务记录」
-- 任务记录 tab：统计卡（今日成功/失败/平均耗时/累计字数）+ 表格（状态图标、文件名、耗时、字数、时间、错误信息 tooltip），10 秒自动刷新，失败行红字
-- 数据全部来自 `/api/jobs/list`，无前端状态
+- 现有面板（GPU 监控 + 手动转写）收纳进 tab：「GPU 监控」/「上传转写」/「任务记录」（现有功能全部保留）
+- **任务记录 tab 统计卡 8 格分两排**：
+  - 实时排（内存任务表，秒级可感）：今日成功 / 今日失败 / 当前任务（🔵转写中+文件名截断hover，空闲显—）/ 排队中（0 灰显）
+  - 汇总排（jobs.json，10 秒轮询）：本周转换（周一至今，含失败，卡下小字注明）/ 本月转换（月初至今）/ 平均耗时 / 累计 Token
+- **任务表格**：状态（✅绿/❌红，失败行淡红底，错误信息 hover tooltip）、文件名、耗时、**Token 数**（口径同现有面板 token_count：不含标点的输出字数）、时间（今天显时分/隔天显日期）；`/api/jobs/list?limit=100` 倒序，最新在上，10 秒自动刷新
+- 响应含 `active`（当前任务文件名或 null）/`queued`（排队数）字段供实时排使用
 
 ### ③ 配置外部化（config.json + app.py）
 
