@@ -227,8 +227,9 @@
           <a-form-item label="文件夹token" name="FeishuFolderToken">
             <a-input v-model:value="formState.FeishuFolderToken" placeholder="月度表格存放位置(可空,空则应用根空间)" />
           </a-form-item>
-          <a-form-item label="推送cron" name="FeishuPushCron">
-            <a-input v-model:value="formState.FeishuPushCron" placeholder="默认 0 50 23 * * ?(每天23:50)" style="width: 220px" />
+          <a-form-item label="推送时间" name="FeishuPushCron">
+            <a-time-picker v-model:value="feishuPushTime" format="HH:mm" :minute-step="5" :allow-empty="false" placeholder="选择每天推送时刻" style="width: 140px" />
+            <span style="margin-left: 8px; color: #888; font-size: 12px">每天该时刻推送当天数据(默认 23:50)</span>
           </a-form-item>
           <a-form-item label="推送状态">
             <a-space>
@@ -327,6 +328,7 @@ import type { FormInstance } from 'ant-design-vue';
 import { useApiStore } from '@/store';
 import { message, Modal } from 'ant-design-vue';
 import { Sortable } from 'sortablejs';
+import dayjs from 'dayjs';
 import type { UploadProps } from 'ant-design-vue/es/upload/interface';
 
 import {
@@ -577,6 +579,18 @@ const getConfig = () => {
 // 模板字符串 → 占位符数组
 const feishuLastResult = ref('');
 const feishuPushLoading = ref(false);
+// 推送时间选择器(dayjs) ↔ cron 字符串互转;存储仍是 cron(后端零改动)
+// Quartz cron: 秒 分 时 * * ?,时间选择器只管 分 时
+const feishuPushTime = computed<import('dayjs').Dayjs | null>({
+  get() {
+    const m = /^0 (\d{1,2}) (\d{1,2}) \* \* \?$/.exec(formState.FeishuPushCron?.trim() || '');
+    if (!m) return null;   // 非「每天HH:mm」形态的 cron(默认值空/手动改过) → 选择器空,用户选一次即归一化
+    return dayjs().hour(Number(m[2])).minute(Number(m[1])).second(0);
+  },
+  set(val) {
+    formState.FeishuPushCron = val ? `0 ${val.minute()} ${val.hour()} * * ?` : '';
+  }
+});
 const loadFeishuStatus = () => {
   useApiStore().GetFeishuStatus().then((res) => {
     if (res.code === 0) feishuLastResult.value = res.data?.lastResult || '';
