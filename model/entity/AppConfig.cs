@@ -162,6 +162,36 @@ namespace dy.net.model.entity
         /// </summary>
         [SugarColumn(IsNullable = true)]
         public bool AsrOverwriteExisting { get; set; }
+
+        /// <summary>飞书推送总开关</summary>
+        public bool FeishuPushEnabled { get; set; }
+        /// <summary>飞书自建应用 AppId</summary>
+        [SugarColumn(Length = 100, IsNullable = true)]
+        public string FeishuAppId { get; set; }
+        /// <summary>飞书自建应用 AppSecret</summary>
+        [SugarColumn(Length = 200, IsNullable = true)]
+        public string FeishuAppSecret { get; set; }
+        /// <summary>你的飞书邮箱(新建Base后自动加为协作者)</summary>
+        [SugarColumn(Length = 200, IsNullable = true)]
+        public string FeishuUserEmail { get; set; }
+        /// <summary>飞书群机器人webhook(空则跳过通知)</summary>
+        [SugarColumn(Length = 500, IsNullable = true)]
+        public string FeishuNotifyWebhook { get; set; }
+        /// <summary>月度Base存放的文件夹token(空则应用根空间)</summary>
+        [SugarColumn(Length = 100, IsNullable = true)]
+        public string FeishuFolderToken { get; set; }
+        /// <summary>推送时刻cron(默认 0 50 23 * * ?)</summary>
+        [SugarColumn(Length = 50, IsNullable = true)]
+        public string FeishuPushCron { get; set; }
+        /// <summary>运行时缓存:本月Base token(程序自管理,不在设置页展示)</summary>
+        [SugarColumn(Length = 100, IsNullable = true)]
+        public string FeishuBaseTokenCache { get; set; }
+        /// <summary>运行时缓存:缓存对应的月份yyyy-M(程序自管理)</summary>
+        [SugarColumn(Length = 20, IsNullable = true)]
+        public string FeishuBaseMonthCache { get; set; }
+        /// <summary>上次推送结果展示(设置页只读展示)</summary>
+        [SugarColumn(Length = 500, IsNullable = true)]
+        public string FeishuLastPushResult { get; set; }
     }
 
 }
