@@ -230,7 +230,7 @@ namespace dy.net.service
                         new { records });
                     var body = await resp.Content.ReadFromJsonAsync<FeishuResp<object>>();
                     if (body?.Code == 0) { lastError = null; break; }
-                    if (body.Code == 1254291 && attempt < RETRY_DELAYS.Length)
+                    if (body?.Code == 1254291 && attempt < RETRY_DELAYS.Length)
                     {
                         Log.Warning("[feishu] 写入限流,退避重试 {Attempt}", attempt + 1);
                         await Task.Delay(RETRY_DELAYS[attempt]);

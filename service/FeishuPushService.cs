@@ -14,6 +14,9 @@ namespace dy.net.service
         private readonly FeishuBitableService bitableService;
         private readonly FeishuNotifyService notifyService;
 
+        // 手动推送与23:50定时任务互斥闸门
+        private static readonly SemaphoreSlim _pushGate = new(1, 1);
+
         public FeishuPushService(DouyinCommonService commonService, DouyinVideoService douyinVideoService,
             FeishuBitableService bitableService, FeishuNotifyService notifyService)
         {
@@ -31,6 +34,10 @@ namespace dy.net.service
             if (string.IsNullOrWhiteSpace(config.FeishuAppId) || string.IsNullOrWhiteSpace(config.FeishuAppSecret))
                 return new FeishuPushResult { Success = false, Message = "飞书AppId/AppSecret未配置" };
 
+            if (!await _pushGate.WaitAsync(0))
+                return new FeishuPushResult { Success = false, Message = "已有推送任务进行中,稍后再试" };
+            try
+            {
             FeishuPushResult result;
             try
             {
@@ -76,10 +83,19 @@ namespace dy.net.service
                 : $"{stamp}抖小云推送失败:{result.Message}";
             await notifyService.SendAsync(config, text);
 
-            config.FeishuLastPushResult = $"{DateTime.Now:yyyy-MM-dd HH:mm} " +
-                (result.Success ? $"成功 {result.Count}条" : $"失败 {result.Message}");
-            await commonService.UpdateConfig(config);
+            try
+            {
+                config.FeishuLastPushResult = $"{DateTime.Now:yyyy-MM-dd HH:mm} " +
+                    (result.Success ? $"成功 {result.Count}条" : $"失败 {result.Message}");
+                await commonService.UpdateConfig(config);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "[feishu] 推送结果落库失败(不影响推送本身)");
+            }
             return result;
+            }
+            finally { _pushGate.Release(); }
         }
     }
 }

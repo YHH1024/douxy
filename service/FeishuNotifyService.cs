@@ -24,7 +24,14 @@ namespace dy.net.service
                 var resp = await client.PostAsJsonAsync(config.FeishuNotifyWebhook,
                     new { msg_type = "text", content = new { text } });
                 var body = await resp.Content.ReadAsStringAsync();
-                if (!resp.IsSuccessStatusCode || !body.Contains("\"code\":0"))
+                var ok = false;
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(body);
+                    ok = doc.RootElement.TryGetProperty("code", out var codeEl) && codeEl.GetInt32() == 0;
+                }
+                catch { ok = false; }
+                if (!resp.IsSuccessStatusCode || !ok)
                     Log.Warning("[feishu] 通知发送异常: {Status} {Body}", resp.StatusCode, body);
             }
             catch (Exception ex)
