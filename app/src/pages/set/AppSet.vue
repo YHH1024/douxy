@@ -234,15 +234,17 @@
           <a-form-item label="推送状态">
             <a-space>
               <span>{{ feishuLastResult || '尚未推送' }}</span>
-              <a-button size="small" :loading="feishuTestLoading" @click="handleFeishuTest">测试连接</a-button>
               <a-button size="small" :loading="feishuPushLoading" @click="handleFeishuPushToday">立即推送今天</a-button>
             </a-space>
           </a-form-item>
-          <a-form-item v-if="feishuTestItems.length" label="检测结果">
-            <div style="font-size: 13px; line-height: 2">
-              <div v-for="item in feishuTestItems" :key="item.name">
-                <a-tag :color="item.ok ? 'green' : 'red'">{{ item.ok ? '✓' : '✗' }}</a-tag>
-                <b>{{ item.name }}</b>：{{ item.message }}
+          <a-form-item label="连通性测试">
+            <div style="width: 100%">
+              <a-button size="small" :loading="feishuTestLoading" @click="handleFeishuTest">测试连接</a-button>
+              <div v-if="feishuTestItems.length" style="margin-top: 8px; font-size: 13px; line-height: 2">
+                <div v-for="item in feishuTestItems" :key="item.name">
+                  <a-tag :color="item.ok ? 'green' : 'red'">{{ item.ok ? '✓' : '✗' }}</a-tag>
+                  <b>{{ item.name }}</b>：{{ item.message }}
+                </div>
               </div>
             </div>
           </a-form-item>
