@@ -234,8 +234,17 @@
           <a-form-item label="推送状态">
             <a-space>
               <span>{{ feishuLastResult || '尚未推送' }}</span>
+              <a-button size="small" :loading="feishuTestLoading" @click="handleFeishuTest">测试连接</a-button>
               <a-button size="small" :loading="feishuPushLoading" @click="handleFeishuPushToday">立即推送今天</a-button>
             </a-space>
+          </a-form-item>
+          <a-form-item v-if="feishuTestItems.length" label="检测结果">
+            <div style="font-size: 13px; line-height: 2">
+              <div v-for="item in feishuTestItems" :key="item.name">
+                <a-tag :color="item.ok ? 'green' : 'red'">{{ item.ok ? '✓' : '✗' }}</a-tag>
+                <b>{{ item.name }}</b>：{{ item.message }}
+              </div>
+            </div>
           </a-form-item>
         </template>
 
@@ -579,6 +588,23 @@ const getConfig = () => {
 // 模板字符串 → 占位符数组
 const feishuLastResult = ref('');
 const feishuPushLoading = ref(false);
+const feishuTestLoading = ref(false);
+const feishuTestItems = ref<{ name: string; ok: boolean; message: string }[]>([]);
+const handleFeishuTest = () => {
+  feishuTestLoading.value = true;
+  useApiStore().FeishuTestConnection().then((res) => {
+    if (res.code === 0 && Array.isArray(res.data)) {
+      feishuTestItems.value = res.data.map((it: any) => ({ name: it.name, ok: !!it.ok, message: it.message || '' }));
+    } else {
+      feishuTestItems.value = [{ name: '请求', ok: false, message: res.message || '测试请求失败' }];
+    }
+  }).catch((e) => {
+    console.error('飞书测试失败:', e);
+    feishuTestItems.value = [{ name: '请求', ok: false, message: '测试请求失败,请检查网络' }];
+  }).finally(() => {
+    feishuTestLoading.value = false;
+  });
+};
 // 推送时间选择器(dayjs) ↔ cron 字符串互转;存储仍是 cron(后端零改动)
 // Quartz cron: 秒 分 时 * * ?,时间选择器只管 分 时
 const feishuPushTime = computed<import('dayjs').Dayjs | null>({

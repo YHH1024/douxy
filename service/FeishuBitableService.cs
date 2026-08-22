@@ -49,6 +49,78 @@ namespace dy.net.service
             };
         }
 
+        /// <summary>
+        /// 连通性测试(只读,不推送):①凭证换token ②读已缓存Base的表列表(bitable权限)
+        /// ③群机器人发测试消息。逐项返回结果,单项失败不阻断后续检测。
+        /// </summary>
+        public async Task<List<FeishuTestItem>> TestConnectionAsync(AppConfig config, FeishuNotifyService notifyService)
+        {
+            var results = new List<FeishuTestItem>();
+
+            // ① 凭证检测:强制刷新 token(避开缓存,验证 app_id/secret 与应用已发布)
+            try
+            {
+                _cachedToken = null;
+                await GetTenantTokenAsync(config);
+                results.Add(new FeishuTestItem { Name = "凭证(App ID/Secret)", Ok = true, Message = "token 获取成功" });
+            }
+            catch (Exception ex)
+            {
+                results.Add(new FeishuTestItem { Name = "凭证(App ID/Secret)", Ok = false, Message = ex.Message });
+                // token 都拿不到,后续检测必然失败
+                results.Add(new FeishuTestItem { Name = "多维表格权限", Ok = false, Message = "跳过(凭证无效)" });
+                results.Add(new FeishuTestItem { Name = "群机器人", Ok = false, Message = "跳过(凭证无效)" });
+                return results;
+            }
+
+            // ② 表格权限:有缓存 Base 才测(读表列表验证 bitable scope);无缓存属正常,首次推送时验证
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(config.FeishuBaseTokenCache))
+                {
+                    var client = await AuthedClientAsync(config);
+                    var resp = await client.GetAsync(
+                        $"{FEISHU_HOST}/open-apis/bitable/v1/apps/{config.FeishuBaseTokenCache}/tables?page_size=10");
+                    var body = await resp.Content.ReadFromJsonAsync<FeishuResp<FeishuTableListData>>();
+                    if (body?.Code == 0)
+                        results.Add(new FeishuTestItem { Name = "多维表格权限", Ok = true, Message = $"可访问,共 {body.Data?.Items?.Count ?? 0} 张表" });
+                    else
+                        results.Add(new FeishuTestItem { Name = "多维表格权限", Ok = false, Message = $"code={body?.Code} {body?.Msg}(检查应用是否开通多维表格权限)" });
+                }
+                else
+                {
+                    results.Add(new FeishuTestItem { Name = "多维表格权限", Ok = true, Message = "首次推送时自动验证" });
+                }
+            }
+            catch (Exception ex)
+            {
+                results.Add(new FeishuTestItem { Name = "多维表格权限", Ok = false, Message = ex.Message });
+            }
+
+            // ③ 群机器人:已填 webhook 才发测试消息(发到群里肉眼确认);未填不算失败
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(config.FeishuNotifyWebhook))
+                {
+                    var (sendOk, sendErr) = await notifyService.SendWithResultAsync(config,
+                        $"抖小云测试消息({DateTime.Now:HH:mm:ss})——收到说明群机器人配置正确");
+                    results.Add(sendOk
+                        ? new FeishuTestItem { Name = "群机器人", Ok = true, Message = "测试消息已发送,请到群里确认" }
+                        : new FeishuTestItem { Name = "群机器人", Ok = false, Message = sendErr });
+                }
+                else
+                {
+                    results.Add(new FeishuTestItem { Name = "群机器人", Ok = true, Message = "未配置webhook,跳过(不影响推送)" });
+                }
+            }
+            catch (Exception ex)
+            {
+                results.Add(new FeishuTestItem { Name = "群机器人", Ok = false, Message = ex.Message });
+            }
+
+            return results;
+        }
+
         // ==================== token ====================
 
         private async Task<string> GetTenantTokenAsync(AppConfig config)

@@ -84,6 +84,13 @@ export const useApiStore = defineStore('coreapi', () => {
 
     });
   }
+  async function FeishuTestConnection() {
+    return http.request<any, Response<any>>('/api/feishu/test', 'post_json', {}).then(r => {
+      return r;
+    }).finally(() => {
+
+    });
+  }
   //后台日志
   async function apiGetLogs(param: string) {
     return http.request<any, Response<any>>('/api/logs/GetLog/' + param, 'get').then(r => {
@@ -468,6 +475,7 @@ export const useApiStore = defineStore('coreapi', () => {
     GetAsrHealth,
     FeishuPushToday,
     GetFeishuStatus,
+    FeishuTestConnection,
     BackfillVideoStats,
     apiGetLogs,
     apiUserInfo,

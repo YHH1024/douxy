@@ -29,6 +29,14 @@ namespace dy.net.model.dto
         public string BaseUrl { get; set; } = string.Empty;
     }
 
+    /// <summary>连通性测试单项结果。</summary>
+    public class FeishuTestItem
+    {
+        public string Name { get; set; }
+        public bool Ok { get; set; }
+        public string Message { get; set; }
+    }
+
     // ===== 飞书 API 信封(仅 FeishuBitableService 内部使用) =====
     internal class FeishuResp<T>
     {
