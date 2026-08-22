@@ -176,30 +176,31 @@
       <div class="form-section">
         <h3 class="section-title">其他配置</h3>
 
-        <a-form-item label="Auto Subtitle" name="AutoGenSubtitle">
+        <a-form-item label="自动生成字幕" name="AutoGenSubtitle">
           <a-switch v-model:checked="formState.AutoGenSubtitle" />
+          <span style="margin-left: 8px; color: #888; font-size: 12px">下载完成后自动转写生成字幕</span>
         </a-form-item>
-        <a-form-item label="ASR Service URL" name="AsrServiceUrl">
+        <a-form-item label="ASR 服务地址" name="AsrServiceUrl">
           <a-input v-model:value="formState.AsrServiceUrl" placeholder="http://127.0.0.1:8010" />
           <div class="flex items-start mt-1 text-sm text-gray-500">
             <InfoCircleOutlined class="text-blue-400 mr-1 mt-0.5" />
-            <span>Start your local FastAPI ASR service first, then dysync.net will call it over HTTP.</span>
+            <span>本地 ASR 转写服务地址，抖小云通过 HTTP 调用；不用管时按需自动拉起。</span>
           </div>
         </a-form-item>
-        <a-form-item label="ASR Status">
+        <a-form-item label="ASR 状态">
           <a-space>
-            <a-tag :color="asrHealthAvailable ? 'green' : 'red'">{{ asrHealthAvailable ? 'Online' : 'Offline' }}</a-tag>
+            <a-tag :color="asrHealthAvailable ? 'green' : 'red'">{{ asrHealthAvailable ? '在线' : '离线' }}</a-tag>
             <span>{{ asrHealthMessage }}</span>
-            <a-button size="small" @click="checkAsrHealth" :loading="asrHealthLoading">Check ASR</a-button>
+            <a-button size="small" @click="checkAsrHealth" :loading="asrHealthLoading">检测 ASR</a-button>
           </a-space>
         </a-form-item>
-        <a-form-item label="Language" name="AsrLanguage">
-          <a-input v-model:value="formState.AsrLanguage" placeholder="Default zh" style="width: 200px" />
+        <a-form-item label="识别语言" name="AsrLanguage">
+          <a-input v-model:value="formState.AsrLanguage" placeholder="默认 zh" style="width: 200px" />
         </a-form-item>
-        <a-form-item label="Prompt" name="AsrPrompt">
-          <a-input v-model:value="formState.AsrPrompt" placeholder="Optional prompt for domain words" />
+        <a-form-item label="提示词" name="AsrPrompt">
+          <a-input v-model:value="formState.AsrPrompt" placeholder="可选,领域词汇提示(如人名/术语)" />
         </a-form-item>
-        <a-form-item label="Overwrite Subtitle" name="AsrOverwriteExisting">
+        <a-form-item label="覆盖已有字幕" name="AsrOverwriteExisting">
           <a-switch v-model:checked="formState.AsrOverwriteExisting" />
         </a-form-item>
         <a-form-item label="视频统计">
@@ -601,7 +602,7 @@ const handleFeishuPushToday = () => {
 const checkAsrHealth = () => {
   if (!formState.AsrServiceUrl) {
     asrHealthAvailable.value = false;
-    asrHealthMessage.value = 'Please configure ASR service URL first';
+    asrHealthMessage.value = '请先配置 ASR 服务地址';
     return;
   }
 
@@ -611,16 +612,16 @@ const checkAsrHealth = () => {
     .then((res) => {
       if (res.code === 0) {
         asrHealthAvailable.value = !!res.data?.available;
-        asrHealthMessage.value = res.data?.message || (res.data?.available ? 'ASR service is online' : 'ASR service is offline');
+        asrHealthMessage.value = res.data?.available ? 'ASR 服务在线' : 'ASR 服务离线';
       } else {
         asrHealthAvailable.value = false;
-        asrHealthMessage.value = res.message || 'ASR health check failed';
+        asrHealthMessage.value = res.message || 'ASR 状态检测失败';
       }
     })
     .catch((error) => {
       console.error('ASR health check failed:', error);
       asrHealthAvailable.value = false;
-      asrHealthMessage.value = 'ASR health check failed';
+      asrHealthMessage.value = 'ASR 状态检测失败';
     })
     .finally(() => {
       asrHealthLoading.value = false;
