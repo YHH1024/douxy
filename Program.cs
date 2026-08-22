@@ -267,8 +267,10 @@ namespace dy.net
                         // 启动定时任务
                         var quartzJobService = services.GetRequiredService<DouyinQuartzJobService>();
                         await quartzJobService.InitOrReStartAllJobs(config?.Cron <= 0 ? "30" : config.Cron.ToString());
-                        await quartzJobService.InitFeishuPushJob(config);
                     }
+                    // 飞书推送与Cookie有效性无关,独立调度(未开启时该方法内部会清理任务)
+                    var feishuQuartzService = services.GetRequiredService<DouyinQuartzJobService>();
+                    await feishuQuartzService.InitFeishuPushJob(config);
                 }
             }
             catch (Exception ex)
