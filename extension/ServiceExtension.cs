@@ -354,6 +354,11 @@ namespace dy.net.extension
             {
                 client.Timeout = TimeSpan.FromMinutes(30);
             });
+
+            services.AddHttpClient(FeishuBitableService.FEISHU_HTTP_CLIENT, client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(30);
+            });
         }
 
         /// <summary>
