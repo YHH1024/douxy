@@ -70,6 +70,20 @@ export const useApiStore = defineStore('coreapi', () => {
 
     });
   }
+  async function FeishuPushToday() {
+    return http.request<any, Response<any>>('/api/feishu/push/today', 'post_json', {}).then(r => {
+      return r;
+    }).finally(() => {
+
+    });
+  }
+  async function GetFeishuStatus() {
+    return http.request<any, Response<any>>('/api/feishu/status', 'get').then(r => {
+      return r;
+    }).finally(() => {
+
+    });
+  }
   //后台日志
   async function apiGetLogs(param: string) {
     return http.request<any, Response<any>>('/api/logs/GetLog/' + param, 'get').then(r => {
@@ -452,6 +466,8 @@ export const useApiStore = defineStore('coreapi', () => {
     apiGetConfig,
     apiUpdateConfig,
     GetAsrHealth,
+    FeishuPushToday,
+    GetFeishuStatus,
     BackfillVideoStats,
     apiGetLogs,
     apiUserInfo,

@@ -206,6 +206,36 @@
           <a-button :loading="backfillLoading" @click="handleBackfillStats">回填统计数据</a-button>
           <span style="margin-left: 8px; color: #888; font-size: 12px">为已同步视频补齐播放/点赞等数据，不影响视频文件</span>
         </a-form-item>
+        <a-form-item label="飞书推送" name="FeishuPushEnabled">
+          <a-switch v-model:checked="formState.FeishuPushEnabled" />
+          <span style="margin-left: 8px; color: #888; font-size: 12px">每天定时把同步记录推送到飞书多维表格</span>
+        </a-form-item>
+        <template v-if="formState.FeishuPushEnabled">
+          <a-form-item label="App ID" name="FeishuAppId">
+            <a-input v-model:value="formState.FeishuAppId" placeholder="飞书自建应用 app_id" />
+          </a-form-item>
+          <a-form-item label="App Secret" name="FeishuAppSecret">
+            <a-input-password v-model:value="formState.FeishuAppSecret" placeholder="飞书自建应用 app_secret" />
+          </a-form-item>
+          <a-form-item label="飞书邮箱" name="FeishuUserEmail">
+            <a-input v-model:value="formState.FeishuUserEmail" placeholder="新建多维表格后加你为协作者" />
+          </a-form-item>
+          <a-form-item label="群机器人webhook" name="FeishuNotifyWebhook">
+            <a-input v-model:value="formState.FeishuNotifyWebhook" placeholder="推送结果通知(可空)" />
+          </a-form-item>
+          <a-form-item label="文件夹token" name="FeishuFolderToken">
+            <a-input v-model:value="formState.FeishuFolderToken" placeholder="月度表格存放位置(可空,空则应用根空间)" />
+          </a-form-item>
+          <a-form-item label="推送cron" name="FeishuPushCron">
+            <a-input v-model:value="formState.FeishuPushCron" placeholder="默认 0 50 23 * * ?(每天23:50)" style="width: 220px" />
+          </a-form-item>
+          <a-form-item label="推送状态">
+            <a-space>
+              <span>{{ feishuLastResult || '尚未推送' }}</span>
+              <a-button size="small" :loading="feishuPushLoading" @click="handleFeishuPushToday">立即推送今天</a-button>
+            </a-space>
+          </a-form-item>
+        </template>
 
         <a-form-item v-show="formState.AutoDistinct" has-feedback label="去重优先级" name="PriorityLevel" :wrapper-col="{ span: 20 }">
           <!-- Tag 拖拽容器 -->
@@ -393,6 +423,13 @@ interface FormState {
   AsrLanguage: string;
   AsrPrompt: string;
   AsrOverwriteExisting: boolean;
+  FeishuPushEnabled: boolean;
+  FeishuAppId: string;
+  FeishuAppSecret: string;
+  FeishuUserEmail: string;
+  FeishuNotifyWebhook: string;
+  FeishuFolderToken: string;
+  FeishuPushCron: string;
 }
 
 // 表单初始数据
@@ -422,7 +459,14 @@ const formState: UnwrapRef<FormState> = reactive({
   AsrServiceUrl: 'http://127.0.0.1:8010',
   AsrLanguage: 'zh',
   AsrPrompt: '',
-  AsrOverwriteExisting: false
+  AsrOverwriteExisting: false,
+  FeishuPushEnabled: false,
+  FeishuAppId: '',
+  FeishuAppSecret: '',
+  FeishuUserEmail: '',
+  FeishuNotifyWebhook: '',
+  FeishuFolderToken: '',
+  FeishuPushCron: ''
 });
 
 // 实时计算完整模板
@@ -502,11 +546,19 @@ const getConfig = () => {
           AsrServiceUrl: res.data.asrServiceUrl || 'http://127.0.0.1:8010',
           AsrLanguage: res.data.asrLanguage || 'zh',
           AsrPrompt: res.data.asrPrompt || '',
-          AsrOverwriteExisting: res.data.asrOverwriteExisting || false
+          AsrOverwriteExisting: res.data.asrOverwriteExisting || false,
+          FeishuPushEnabled: res.data.feishuPushEnabled || false,
+          FeishuAppId: res.data.feishuAppId || '',
+          FeishuAppSecret: res.data.feishuAppSecret || '',
+          FeishuUserEmail: res.data.feishuUserEmail || '',
+          FeishuNotifyWebhook: res.data.feishuNotifyWebhook || '',
+          FeishuFolderToken: res.data.feishuFolderToken || '',
+          FeishuPushCron: res.data.feishuPushCron || ''
         });
 
         tagData.value = JSON.parse(res.data.priorityLevel || '[]');
         checkAsrHealth();
+        loadFeishuStatus();
       } else {
         if (res.message.indexOf('401') == -1) {
           message.error(res.message || '获取配置失败', 8);
@@ -522,6 +574,30 @@ const getConfig = () => {
 };
 
 // 模板字符串 → 占位符数组
+const feishuLastResult = ref('');
+const feishuPushLoading = ref(false);
+const loadFeishuStatus = () => {
+  useApiStore().GetFeishuStatus().then((res) => {
+    if (res.code === 0) feishuLastResult.value = res.data?.lastResult || '';
+  }).catch(() => {});
+};
+const handleFeishuPushToday = () => {
+  feishuPushLoading.value = true;
+  useApiStore().FeishuPushToday().then((res) => {
+    if (res.code === 0 && res.data?.success) {
+      message.success(res.data.message || '推送成功');
+    } else {
+      message.error(res.data?.message || res.message || '推送失败');
+    }
+    loadFeishuStatus();
+  }).catch((e) => {
+    console.error('飞书推送失败:', e);
+    message.error('推送请求失败');
+  }).finally(() => {
+    feishuPushLoading.value = false;
+  });
+};
+
 const checkAsrHealth = () => {
   if (!formState.AsrServiceUrl) {
     asrHealthAvailable.value = false;
