@@ -5,7 +5,6 @@ using dy.net.service;
 using dy.net.utils;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Text;
 
 namespace dy.net.Controllers
 {
@@ -433,7 +432,7 @@ namespace dy.net.Controllers
                 return ApiResult.Fail($"字幕文件不存在：{subtitleFullPath}");
             }
 
-            var content = await ReadSubtitleTextAsync(subtitleFullPath);
+            var content = await SubtitleTextReader.ReadAsync(subtitleFullPath);
             return ApiResult.Success(new
             {
                 subtitlePath = subtitleFullPath,
@@ -648,7 +647,7 @@ namespace dy.net.Controllers
                 string subtitle = string.Empty;
                 if (!string.IsNullOrWhiteSpace(v.SubtitleSavePath))
                 {
-                    try { subtitle = await ReadSubtitleTextAsync(Path.GetFullPath(v.SubtitleSavePath)); }
+                    try { subtitle = await SubtitleTextReader.ReadAsync(Path.GetFullPath(v.SubtitleSavePath)); }
                     catch { subtitle = string.Empty; }
                 }
                 builder.AddRow(new object[]
@@ -673,42 +672,6 @@ namespace dy.net.Controllers
             var fileName = $"{DateTime.Now:yyyy年M月d日}抖小云同步数据.xlsx";
             Serilog.Log.Information("[export/today] 导出 {Count} 条, 文件 {File}", today.Count, fileName);
             return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
-        }
-
-        /// <summary>读取视频字幕文本:优先同名 .txt(纯文本),退化 .srt。失败/超长截断,返回安全文本。</summary>
-        private static async Task<string> ReadSubtitleTextAsync(string subtitleFullPath)
-        {
-            try
-            {
-                string contentPath = subtitleFullPath;
-                string textSibling = Path.ChangeExtension(subtitleFullPath, ".txt");
-                if (System.IO.File.Exists(textSibling))
-                {
-                    contentPath = textSibling;
-                }
-                if (!System.IO.File.Exists(contentPath))
-                {
-                    return string.Empty;
-                }
-                var text = await ReadSubtitleContentAsync(contentPath);
-                return text.Length > 32000 ? text.Substring(0, 32000) + "…" : text;
-            }
-            catch
-            {
-                return string.Empty;
-            }
-        }
-
-        private static async Task<string> ReadSubtitleContentAsync(string filePath)
-        {
-            try
-            {
-                return await System.IO.File.ReadAllTextAsync(filePath, Encoding.UTF8);
-            }
-            catch (DecoderFallbackException)
-            {
-                return await System.IO.File.ReadAllTextAsync(filePath, Encoding.Default);
-            }
         }
     }
 }
