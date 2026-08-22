@@ -267,6 +267,7 @@ namespace dy.net
                         // 启动定时任务
                         var quartzJobService = services.GetRequiredService<DouyinQuartzJobService>();
                         await quartzJobService.InitOrReStartAllJobs(config?.Cron <= 0 ? "30" : config.Cron.ToString());
+                        await quartzJobService.InitFeishuPushJob(config);
                     }
                 }
             }

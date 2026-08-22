@@ -382,7 +382,10 @@ namespace dy.net.Controllers
         {
             var config = commonService.GetConfig();
             if (config != null)
+            {
                 quartzJobService.InitOrReStartAllJobs(config.Cron.ToString());
+                _ = quartzJobService.InitFeishuPushJob(config);   // fire-and-forget,同上行不阻塞前端
+            }
             //避免前端等待
         }
         /// <summary>

@@ -245,6 +245,46 @@ namespace dy.net.service
         }
 
         /// <summary>
+        /// 初始化/刷新/移除飞书每日推送任务(独立于JobConfigs管理,key不属VideoTypeEnum)。
+        /// 未开启或配置缺失时删除已存在的任务。
+        /// </summary>
+        public async Task InitFeishuPushJob(model.entity.AppConfig config)
+        {
+            var scheduler = await _schedulerFactory.GetScheduler();
+            var jobKey = new JobKey("feishu.job.key.daily_push", DefaultJobGroup);
+            var triggerKey = new TriggerKey("feishu.trigger.key.daily_push", DefaultJobGroup);
+
+            if (config == null || !config.FeishuPushEnabled)
+            {
+                if (await scheduler.CheckExists(jobKey))
+                {
+                    await scheduler.DeleteJob(jobKey);
+                    Log.Information("【quartz】飞书推送已关闭,移除定时任务");
+                }
+                return;
+            }
+
+            var cron = !string.IsNullOrWhiteSpace(config.FeishuPushCron) && CronExpression.IsValidExpression(config.FeishuPushCron)
+                ? config.FeishuPushCron
+                : "0 50 23 * * ?";
+
+            if (await scheduler.CheckExists(jobKey))
+                await scheduler.DeleteJob(jobKey);
+
+            var jobDetail = JobBuilder.Create<FeishuDailyPushJob>()
+                .WithIdentity(jobKey)
+                .WithDescription("飞书多维表格每日推送")
+                .DisallowConcurrentExecution()
+                .Build();
+            var trigger = TriggerBuilder.Create()
+                .WithIdentity(triggerKey)
+                .WithCronSchedule(cron)
+                .Build();
+            await scheduler.ScheduleJob(jobDetail, trigger);
+            Log.Information("【quartz】飞书推送任务已调度,cron={Cron}", cron);
+        }
+
+        /// <summary>
         /// 移除所有已存在的任务（避免重复调度）
         /// </summary>
         private static async Task RemoveAllExistingJobs(IScheduler scheduler)
