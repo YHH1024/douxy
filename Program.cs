@@ -274,6 +274,8 @@ namespace dy.net
                     // 关注视频统计回填(与Cookie/飞书配置无关)
                     var backfillQuartzService = services.GetRequiredService<DouyinQuartzJobService>();
                     await backfillQuartzService.InitVideoStatsBackfillJob();
+                    // 字幕队列消费(每2分钟;AutoGenSubtitle 关闭时 Job 内部自空转)
+                    await backfillQuartzService.InitSubtitleQueueJob();
                 }
             }
             catch (Exception ex)

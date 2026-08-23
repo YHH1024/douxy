@@ -1309,11 +1309,7 @@ namespace dy.net.job
             try
             {
                 await douyinVideoService.BatchInsertOrUpdate(videos);
-                if (config.AutoGenSubtitle)
-                {
-                    var (successCount, failedCount) = await localAsrSubtitleService.GenerateSubtitlesForVideosAsync(videos, config);
-                    Log.Debug($"[{cookie.UserName}][{VideoType.GetDesc()}]-本地字幕生成完成，成功:{successCount}，失败:{failedCount}");
-                }
+                Log.Debug($"[{cookie.UserName}][{VideoType.GetDesc()}]-入库{videos.Count}条(字幕由队列处理)");
                 return videos.Count;
             }
             catch (Exception ex)

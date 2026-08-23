@@ -466,6 +466,13 @@ namespace dy.net.service
             return string.Empty;
         }
 
+        /// <summary>队列结果→SRT(适配异步队列的 text+segments 形态)。</summary>
+        public static string BuildSrtContentFrom(string text, List<AsrSegment> segments)
+        {
+            var payload = new AsrTranscribePayload { Text = text, Segments = segments };
+            return BuildSrtContent(payload);
+        }
+
         private static string BuildSrtContent(AsrTranscribePayload payload)
         {
             var segments = payload.Segments?.Where(segment => !string.IsNullOrWhiteSpace(segment.Text)).ToList() ?? new List<AsrSegment>();

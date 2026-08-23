@@ -309,6 +309,22 @@ namespace dy.net.service
             Log.Information("【quartz】统计回填任务已调度,cron=0 30 5 * * ?");
         }
 
+        /// <summary>字幕队列消费任务(每2分钟;AutoGenSubtitle 关闭时 Job 内部自空转)。</summary>
+        public async Task InitSubtitleQueueJob()
+        {
+            var scheduler = await _schedulerFactory.GetScheduler();
+            var jobKey = new JobKey("subtitle.queue.job.key", DefaultJobGroup);
+            var triggerKey = new TriggerKey("subtitle.queue.trigger.key", DefaultJobGroup);
+            if (await scheduler.CheckExists(jobKey))
+                await scheduler.DeleteJob(jobKey);
+            var jobDetail = JobBuilder.Create<SubtitleQueueJob>()
+                .WithIdentity(jobKey).WithDescription("字幕队列消费").DisallowConcurrentExecution().Build();
+            var trigger = TriggerBuilder.Create()
+                .WithIdentity(triggerKey).WithCronSchedule("0 */2 * * * ?").Build();
+            await scheduler.ScheduleJob(jobDetail, trigger);
+            Log.Information("【quartz】字幕队列任务已调度,cron=0 */2 * * * ?");
+        }
+
         /// <summary>
         /// 移除所有已存在的任务（避免重复调度）
         /// </summary>

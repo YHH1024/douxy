@@ -281,6 +281,7 @@ namespace dy.net.extension
             services.AddScoped<DouyinSeriesSyncJob>();
             services.AddScoped<FeishuDailyPushJob>();
             services.AddScoped<VideoStatsBackfillJob>();
+            services.AddScoped<SubtitleQueueJob>();
 
             // 提前创建Quartz的SQLite连接字符串，避免重复调用
             string quartzConn = CreateSqliteDBConn(dbPath);
