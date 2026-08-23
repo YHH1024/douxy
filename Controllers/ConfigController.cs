@@ -333,7 +333,7 @@ namespace dy.net.Controllers
         public async Task<IActionResult> UpdateConfig(AppConfig config)
         {
             // 前端表单不携带飞书运行时缓存字段,全列覆盖会把它们冲掉→月度Base缓存丢失→重复建Base。
-            // 保存前从库回填这4个程序自管字段。
+            // 保存前从库回填这8个程序自管字段。
             var current = commonService.GetConfig();
             if (current != null)
             {
@@ -341,6 +341,10 @@ namespace dy.net.Controllers
                 config.FeishuBaseMonthCache = current.FeishuBaseMonthCache;
                 config.FeishuLastPushResult = current.FeishuLastPushResult;
                 config.FeishuAutoFolderToken = current.FeishuAutoFolderToken;
+                config.FeishuUserAccessToken = current.FeishuUserAccessToken;
+                config.FeishuUserRefreshToken = current.FeishuUserRefreshToken;
+                config.FeishuUserTokenExpiresAt = current.FeishuUserTokenExpiresAt;
+                config.FeishuUserRefreshExpiresAt = current.FeishuUserRefreshExpiresAt;
             }
             var update = await commonService.UpdateConfig(config);
             if (update)

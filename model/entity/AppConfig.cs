@@ -195,6 +195,18 @@ namespace dy.net.model.entity
         /// <summary>运行时缓存:专属文件夹「抖小云同步数据」token,FolderToken未配置时程序自动建并记在此(程序自管理)</summary>
         [SugarColumn(Length = 100, IsNullable = true)]
         public string FeishuAutoFolderToken { get; set; }
+        /// <summary>用户授权token(OAuth user_access_token,程序自管理)</summary>
+        [SugarColumn(Length = 4000, IsNullable = true, ColumnDataType = "TEXT")]
+        public string FeishuUserAccessToken { get; set; }
+        /// <summary>用户授权刷新token(一次性,每次刷新后更新,程序自管理)</summary>
+        [SugarColumn(Length = 4000, IsNullable = true, ColumnDataType = "TEXT")]
+        public string FeishuUserRefreshToken { get; set; }
+        /// <summary>用户授权token过期时刻(程序自管理)</summary>
+        [SugarColumn(IsNullable = true)]
+        public DateTime? FeishuUserTokenExpiresAt { get; set; }
+        /// <summary>用户授权刷新token过期时刻(程序自管理)</summary>
+        [SugarColumn(IsNullable = true)]
+        public DateTime? FeishuUserRefreshExpiresAt { get; set; }
     }
 
 }
