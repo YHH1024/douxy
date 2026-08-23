@@ -227,6 +227,21 @@
           <a-form-item label="文件夹token" name="FeishuFolderToken">
             <a-input v-model:value="formState.FeishuFolderToken" placeholder="月度表格存放位置(可空,空则应用根空间)" />
           </a-form-item>
+          <a-form-item label="账号授权" name="FeishuOauth">
+            <a-space direction="vertical" :size="4" style="width: 100%">
+              <a-space>
+                <a-button size="small" :loading="feishuOauthLoading" @click="handleFeishuOauth">授权飞书账号</a-button>
+                <span v-if="feishuOauthInfo.authorized" style="color: #52c41a; font-size: 13px">
+                  已授权（刷新凭证至 {{ feishuOauthInfo.refreshExpiresAt }}）
+                </span>
+                <span v-else style="color: #999; font-size: 13px">未授权（推送将以应用身份执行，表格建在应用空间）</span>
+              </a-space>
+              <span style="color: #999; font-size: 12px">
+                授权后推送以你的身份执行，多维表格直接建在上面的「文件夹token」文件夹里。首次使用需在飞书开发者后台→安全设置→重定向 URL 添加：
+                http://localhost:10101/api/feishu/oauth/callback
+              </span>
+            </a-space>
+          </a-form-item>
           <a-form-item label="推送时间" name="FeishuPushCron">
             <a-time-picker v-model:value="feishuPushTime" format="HH:mm" :minute-step="5" :allow-empty="false" placeholder="选择每天推送时刻" style="width: 140px" />
             <span style="margin-left: 8px; color: #888; font-size: 12px">每天该时刻推送当天数据(默认 23:50)</span>
@@ -592,6 +607,17 @@ const feishuLastResult = ref('');
 const feishuPushLoading = ref(false);
 const feishuTestLoading = ref(false);
 const feishuTestItems = ref<{ name: string; ok: boolean; message: string }[]>([]);
+const feishuOauthLoading = ref(false);
+const feishuOauthInfo = ref<{ authorized: boolean; refreshExpiresAt?: string }>({ authorized: false });
+const handleFeishuOauth = () => {
+  feishuOauthLoading.value = true;
+  useApiStore().FeishuOauthUrl().then((res: any) => {
+    if (res?.data?.url) window.open(res.data.url, '_blank');
+    else message.error(res?.message || '生成授权链接失败');
+  }).finally(() => {
+    feishuOauthLoading.value = false;
+  });
+};
 const handleFeishuTest = () => {
   feishuTestLoading.value = true;
   useApiStore().FeishuTestConnection().then((res) => {
@@ -621,7 +647,14 @@ const feishuPushTime = computed<import('dayjs').Dayjs | null>({
 });
 const loadFeishuStatus = () => {
   useApiStore().GetFeishuStatus().then((res) => {
-    if (res.code === 0) feishuLastResult.value = res.data?.lastResult || '';
+    if (res.code === 0) {
+      feishuLastResult.value = res.data?.lastResult || '';
+      const oauth = res.data?.oauth;
+      feishuOauthInfo.value = {
+        authorized: !!(oauth && oauth.authorized),
+        refreshExpiresAt: oauth && oauth.refreshExpiresAt ? String(oauth.refreshExpiresAt).replace('T', ' ').slice(0, 16) : undefined
+      };
+    }
   }).catch(() => {});
 };
 const handleFeishuPushToday = () => {

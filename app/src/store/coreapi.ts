@@ -91,6 +91,12 @@ export const useApiStore = defineStore('coreapi', () => {
 
     });
   }
+  async function FeishuOauthUrl() {
+    return http.request<any, Response<any>>('/api/feishu/oauth/url', 'get').then(r => {
+      return r;
+    }).finally(() => {
+    });
+  }
   //后台日志
   async function apiGetLogs(param: string) {
     return http.request<any, Response<any>>('/api/logs/GetLog/' + param, 'get').then(r => {
@@ -476,6 +482,7 @@ export const useApiStore = defineStore('coreapi', () => {
     FeishuPushToday,
     GetFeishuStatus,
     FeishuTestConnection,
+    FeishuOauthUrl,
     BackfillVideoStats,
     apiGetLogs,
     apiUserInfo,
