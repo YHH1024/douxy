@@ -251,13 +251,24 @@ namespace dy.net.service
 
             var client = await AuthedClientAsync(config);
 
-            // Base 存放文件夹:用户配置的 FolderToken 优先;未配置则用应用自建的专属文件夹「抖小云同步数据」
-            // (个人版飞书用户自己的文件夹加不了应用协作者写不进,自建文件夹是唯一可写的集中存放处)
-            var folderToken = config.FeishuFolderToken;
-            if (string.IsNullOrWhiteSpace(folderToken))
+            // Base 存放文件夹:用户身份=必须建在用户自己的文件夹(个人版飞书用户文件夹只能以用户身份写入);
+            // 应用身份=FolderToken 优先,未配置则应用自建专属文件夹
+            string folderToken;
+            if (HasUserAuth(config))
             {
-                folderToken = await EnsureAutoFolderAsync(client, config);
-                Log.Information("[feishu] 月度Base将建在专属文件夹 {Folder}", folderToken);
+                if (string.IsNullOrWhiteSpace(config.FeishuFolderToken))
+                    throw new Exception("用户授权模式下必须在设置页填写文件夹token(你自己的文件夹,地址栏 folder/ 后那串)");
+                folderToken = config.FeishuFolderToken;
+                Log.Information("[feishu] 用户身份模式,Base建在用户文件夹 {Folder}", folderToken);
+            }
+            else
+            {
+                folderToken = config.FeishuFolderToken;
+                if (string.IsNullOrWhiteSpace(folderToken))
+                {
+                    folderToken = await EnsureAutoFolderAsync(client, config);
+                    Log.Information("[feishu] 月度Base将建在专属文件夹 {Folder}", folderToken);
+                }
             }
 
             var payload = string.IsNullOrWhiteSpace(folderToken)
@@ -271,23 +282,27 @@ namespace dy.net.service
             Log.Information("[feishu] 新建月度Base {Token}", appToken);
 
             // 组织内链接可编辑:个人版无法给文件夹加应用协作者,靠链接让用户能直接打开Base(失败不阻断)
-            try
+            // 用户身份下Base归属本人,无需链接分享
+            if (!HasUserAuth(config))
             {
-                var shareReq = new HttpRequestMessage(HttpMethod.Patch,
-                    $"{FEISHU_HOST}/open-apis/drive/v1/permissions/{appToken}/public?type=bitable")
-                { Content = JsonContent.Create(new { link_share_entity = "tenant_editable" }) };
-                var shareResp = await client.SendAsync(shareReq);
-                var shareBody = await shareResp.Content.ReadFromJsonAsync<FeishuResp<object>>();
-                if (shareBody?.Code != 0)
-                    Log.Warning("[feishu] 设置链接分享失败: code={Code} msg={Msg}", shareBody?.Code, shareBody?.Msg);
-            }
-            catch (Exception ex)
-            {
-                Log.Warning(ex, "[feishu] 设置链接分享异常(不阻断)");
+                try
+                {
+                    var shareReq = new HttpRequestMessage(HttpMethod.Patch,
+                        $"{FEISHU_HOST}/open-apis/drive/v1/permissions/{appToken}/public?type=bitable")
+                    { Content = JsonContent.Create(new { link_share_entity = "tenant_editable" }) };
+                    var shareResp = await client.SendAsync(shareReq);
+                    var shareBody = await shareResp.Content.ReadFromJsonAsync<FeishuResp<object>>();
+                    if (shareBody?.Code != 0)
+                        Log.Warning("[feishu] 设置链接分享失败: code={Code} msg={Msg}", shareBody?.Code, shareBody?.Msg);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex, "[feishu] 设置链接分享异常(不阻断)");
+                }
             }
 
-            // 加协作者(失败不阻断推送,仅告警);邮箱未填则跳过——Base建在用户文件夹(已授权)时本就无需额外共享
-            if (!string.IsNullOrWhiteSpace(config.FeishuUserEmail))
+            // 加协作者(失败不阻断推送,仅告警);邮箱未填则跳过;用户身份下Base归属本人,无需加协作者
+            if (!HasUserAuth(config) && !string.IsNullOrWhiteSpace(config.FeishuUserEmail))
             {
                 try
                 {
