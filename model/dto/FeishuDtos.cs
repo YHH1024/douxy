@@ -89,4 +89,16 @@ namespace dy.net.model.dto
     {
         [JsonPropertyName("record_id")] public string RecordId { get; set; }
     }
+
+    /// <summary>OAuth user_access_token 响应(扁平结构,无data包裹;refresh字段仅授予offline_access时返回)。</summary>
+    internal class FeishuOAuthTokenResp
+    {
+        [JsonPropertyName("code")] public int Code { get; set; }
+        [JsonPropertyName("access_token")] public string AccessToken { get; set; }
+        [JsonPropertyName("expires_in")] public int? ExpiresIn { get; set; }
+        [JsonPropertyName("refresh_token")] public string RefreshToken { get; set; }
+        [JsonPropertyName("refresh_token_expires_in")] public int? RefreshExpiresIn { get; set; }
+        [JsonPropertyName("error")] public string Error { get; set; }
+        [JsonPropertyName("error_description")] public string ErrorDescription { get; set; }
+    }
 }

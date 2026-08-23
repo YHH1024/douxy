@@ -123,6 +123,88 @@ namespace dy.net.service
 
         // ==================== token ====================
 
+        /// <summary>是否已有有效的用户授权(refresh_token 未过期即视为已授权,access 可刷新)。</summary>
+        public bool HasUserAuth(AppConfig config)
+            => !string.IsNullOrWhiteSpace(config.FeishuUserRefreshToken)
+               && config.FeishuUserRefreshExpiresAt.HasValue
+               && config.FeishuUserRefreshExpiresAt.Value > DateTime.Now;
+
+        /// <summary>构造飞书用户授权页链接。scope 含 offline_access 才会返回 refresh_token。</summary>
+        public Task<Uri> BuildAuthorizeUrlAsync(AppConfig config, string redirectUri, string state)
+        {
+            var scope = Uri.EscapeDataString("bitable:app drive:drive offline_access");
+            var redirect = Uri.EscapeDataString(redirectUri);
+            var url = $"{FEISHU_HOST}/open-apis/authen/v1/index?app_id={config.FeishuAppId}&redirect_uri={redirect}&scope={scope}&state={state}";
+            return Task.FromResult(new Uri(url));
+        }
+
+        /// <summary>授权码换 token 并落库(含 access/refresh 过期时刻)。同时清 Base 缓存,触发下次推送在新身份的文件夹重建。</summary>
+        public async Task<string> ExchangeCodeAsync(AppConfig config, string code, string redirectUri)
+        {
+            var client = _httpClientFactory.CreateClient(FEISHU_HTTP_CLIENT);
+            var resp = await client.PostAsJsonAsync($"{FEISHU_HOST}/open-apis/authen/v2/oauth/token", new
+            {
+                grant_type = "authorization_code",
+                client_id = config.FeishuAppId,
+                client_secret = config.FeishuAppSecret,
+                code,
+                redirect_uri = redirectUri
+            });
+            var body = await resp.Content.ReadFromJsonAsync<FeishuOAuthTokenResp>();
+            if (body?.Code != 0 || string.IsNullOrEmpty(body.AccessToken))
+                throw new Exception($"飞书授权码换token失败: code={body?.Code} {body?.Error} {body?.ErrorDescription}");
+            await SaveUserTokensAsync(config, body);
+            config.FeishuBaseTokenCache = null;
+            config.FeishuBaseMonthCache = null;
+            await commonService.UpdateConfig(config);
+            return body.AccessToken;
+        }
+
+        /// <summary>落库 token 与过期时刻。</summary>
+        private async Task SaveUserTokensAsync(AppConfig config, FeishuOAuthTokenResp body)
+        {
+            config.FeishuUserAccessToken = body.AccessToken;
+            config.FeishuUserTokenExpiresAt = DateTime.Now.AddSeconds((body.ExpiresIn ?? 7200) - 300);
+            if (!string.IsNullOrEmpty(body.RefreshToken))
+            {
+                config.FeishuUserRefreshToken = body.RefreshToken;
+                config.FeishuUserRefreshExpiresAt = DateTime.Now.AddSeconds(body.RefreshExpiresIn ?? 604800);
+            }
+            await commonService.UpdateConfig(config);
+        }
+
+        /// <summary>获取用户token:未过期直接用;过期用refresh刷新(新refresh立即落库,旧的一次性作废);refresh也过期抛明确错误。</summary>
+        private async Task<string> GetUserAccessTokenAsync(AppConfig config)
+        {
+            if (!string.IsNullOrEmpty(config.FeishuUserAccessToken) && config.FeishuUserTokenExpiresAt > DateTime.Now)
+                return config.FeishuUserAccessToken;
+
+            if (!HasUserAuth(config))
+                throw new Exception("飞书用户授权已过期,请到设置页重新点击「授权飞书账号」");
+
+            var client = _httpClientFactory.CreateClient(FEISHU_HTTP_CLIENT);
+            var resp = await client.PostAsJsonAsync($"{FEISHU_HOST}/open-apis/authen/v2/oauth/token", new
+            {
+                grant_type = "refresh_token",
+                client_id = config.FeishuAppId,
+                client_secret = config.FeishuAppSecret,
+                refresh_token = config.FeishuUserRefreshToken
+            });
+            var body = await resp.Content.ReadFromJsonAsync<FeishuOAuthTokenResp>();
+            if (body?.Code != 0 || string.IsNullOrEmpty(body.AccessToken))
+            {
+                // 失效的refresh清掉,让状态回到「未授权」而不是反复用死token重试
+                config.FeishuUserAccessToken = null;
+                config.FeishuUserRefreshToken = null;
+                config.FeishuUserTokenExpiresAt = null;
+                config.FeishuUserRefreshExpiresAt = null;
+                await commonService.UpdateConfig(config);
+                throw new Exception($"飞书用户授权已失效({body?.Error ?? body?.Code.ToString()}),请到设置页重新授权");
+            }
+            await SaveUserTokensAsync(config, body);
+            return body.AccessToken;
+        }
+
         private async Task<string> GetTenantTokenAsync(AppConfig config)
         {
             if (!string.IsNullOrEmpty(_cachedToken) && DateTime.Now < _tokenExpireAt)
@@ -140,11 +222,15 @@ namespace dy.net.service
             return _cachedToken;
         }
 
+        /// <summary>带鉴权客户端:用户身份优先(文件建在用户文件夹),无用户授权回落应用身份(现有行为)。</summary>
         private async Task<HttpClient> AuthedClientAsync(AppConfig config)
         {
             var client = _httpClientFactory.CreateClient(FEISHU_HTTP_CLIENT);
+            var token = HasUserAuth(config)
+                ? await GetUserAccessTokenAsync(config)
+                : await GetTenantTokenAsync(config);
             client.DefaultRequestHeaders.Authorization =
-                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", await GetTenantTokenAsync(config));
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
             return client;
         }
 
