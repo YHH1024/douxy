@@ -192,6 +192,9 @@ namespace dy.net.model.entity
         /// <summary>上次推送结果展示(设置页只读展示)</summary>
         [SugarColumn(Length = 500, IsNullable = true)]
         public string FeishuLastPushResult { get; set; }
+        /// <summary>运行时缓存:专属文件夹「抖小云同步数据」token,FolderToken未配置时程序自动建并记在此(程序自管理)</summary>
+        [SugarColumn(Length = 100, IsNullable = true)]
+        public string FeishuAutoFolderToken { get; set; }
     }
 
 }

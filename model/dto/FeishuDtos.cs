@@ -44,10 +44,13 @@ namespace dy.net.model.dto
         [JsonPropertyName("msg")] public string Msg { get; set; }
         [JsonPropertyName("data")] public T Data { get; set; }
     }
-    internal class FeishuTokenData
+    /// <summary>tenant_access_token/internal 是扁平响应:token/expire 直接在顶层,无 data 包裹(与飞书其他接口的信封不同)。</summary>
+    internal class FeishuTokenResp
     {
+        [JsonPropertyName("code")] public int Code { get; set; }
+        [JsonPropertyName("msg")] public string Msg { get; set; }
         [JsonPropertyName("tenant_access_token")] public string Token { get; set; }
-        [JsonPropertyName("expire")] public int Expire { get; set; }
+        [JsonPropertyName("expire")] public int Expire {  get; set; }
     }
     internal class FeishuAppData
     {
@@ -56,6 +59,12 @@ namespace dy.net.model.dto
     internal class FeishuAppInfo
     {
         [JsonPropertyName("app_token")] public string AppToken { get; set; }
+    }
+    /// <summary>drive/v1/files/create_folder 响应:{token,url} 在 data 下。</summary>
+    internal class FeishuFolderData
+    {
+        [JsonPropertyName("token")] public string Token { get; set; }
+        [JsonPropertyName("url")] public string Url { get; set; }
     }
     internal class FeishuTableListData
     {

@@ -44,7 +44,7 @@ namespace dy.net.service
             {
                 Success = true,
                 Count = rows.Count,
-                BaseUrl = $"https://feishu.cn/base/{baseToken}",
+                BaseUrl = $"https://feishu.cn/base/{baseToken}", // 链接分享已开(tenant_editable),用户可直接打开
                 Message = $"推送 {rows.Count} 条"
             };
         }
@@ -131,11 +131,12 @@ namespace dy.net.service
             var client = _httpClientFactory.CreateClient(FEISHU_HTTP_CLIENT);
             var resp = await client.PostAsJsonAsync($"{FEISHU_HOST}/open-apis/auth/v3/tenant_access_token/internal",
                 new { app_id = config.FeishuAppId, app_secret = config.FeishuAppSecret });
-            var body = await resp.Content.ReadFromJsonAsync<FeishuResp<FeishuTokenData>>();
-            if (body?.Code != 0 || string.IsNullOrEmpty(body.Data?.Token))
+            // 该接口是扁平响应(token在顶层无data包裹),不能用通用信封解析
+            var body = await resp.Content.ReadFromJsonAsync<FeishuTokenResp>();
+            if (body?.Code != 0 || string.IsNullOrEmpty(body?.Token))
                 throw new Exception($"飞书token获取失败: code={body?.Code} msg={body?.Msg}");
-            _cachedToken = body.Data.Token;
-            _tokenExpireAt = DateTime.Now.AddSeconds(body.Data.Expire - 300);
+            _cachedToken = body.Token;
+            _tokenExpireAt = DateTime.Now.AddSeconds(body.Expire - 300);
             return _cachedToken;
         }
 
@@ -163,9 +164,19 @@ namespace dy.net.service
                 return config.FeishuBaseTokenCache;
 
             var client = await AuthedClientAsync(config);
-            var payload = string.IsNullOrWhiteSpace(config.FeishuFolderToken)
+
+            // Base 存放文件夹:用户配置的 FolderToken 优先;未配置则用应用自建的专属文件夹「抖小云同步数据」
+            // (个人版飞书用户自己的文件夹加不了应用协作者写不进,自建文件夹是唯一可写的集中存放处)
+            var folderToken = config.FeishuFolderToken;
+            if (string.IsNullOrWhiteSpace(folderToken))
+            {
+                folderToken = await EnsureAutoFolderAsync(client, config);
+                Log.Information("[feishu] 月度Base将建在专属文件夹 {Folder}", folderToken);
+            }
+
+            var payload = string.IsNullOrWhiteSpace(folderToken)
                 ? new { name = $"抖小云同步数据-{DateTime.Now:yyyy年M月}" }
-                : (object)new { name = $"抖小云同步数据-{DateTime.Now:yyyy年M月}", folder_token = config.FeishuFolderToken };
+                : (object)new { name = $"抖小云同步数据-{DateTime.Now:yyyy年M月}", folder_token = folderToken };
             var resp = await client.PostAsJsonAsync($"{FEISHU_HOST}/open-apis/bitable/v1/apps", payload);
             var body = await resp.Content.ReadFromJsonAsync<FeishuResp<FeishuAppData>>();
             if (body?.Code != 0 || string.IsNullOrEmpty(body.Data?.App?.AppToken))
@@ -173,25 +184,61 @@ namespace dy.net.service
             var appToken = body.Data.App.AppToken;
             Log.Information("[feishu] 新建月度Base {Token}", appToken);
 
-            // 加协作者(失败不阻断推送,仅告警)
+            // 组织内链接可编辑:个人版无法给文件夹加应用协作者,靠链接让用户能直接打开Base(失败不阻断)
             try
             {
-                var permResp = await client.PostAsJsonAsync(
-                    $"{FEISHU_HOST}/open-apis/drive/v1/permissions/{appToken}/members?type=bitable",
-                    new { member_type = "email", member_id = config.FeishuUserEmail, perm = "edit" });
-                var permBody = await permResp.Content.ReadFromJsonAsync<FeishuResp<object>>();
-                if (permBody?.Code != 0)
-                    Log.Warning("[feishu] 加协作者失败: code={Code} msg={Msg}", permBody?.Code, permBody?.Msg);
+                var shareReq = new HttpRequestMessage(HttpMethod.Patch,
+                    $"{FEISHU_HOST}/open-apis/drive/v1/permissions/{appToken}/public?type=bitable")
+                { Content = JsonContent.Create(new { link_share_entity = "tenant_editable" }) };
+                var shareResp = await client.SendAsync(shareReq);
+                var shareBody = await shareResp.Content.ReadFromJsonAsync<FeishuResp<object>>();
+                if (shareBody?.Code != 0)
+                    Log.Warning("[feishu] 设置链接分享失败: code={Code} msg={Msg}", shareBody?.Code, shareBody?.Msg);
             }
             catch (Exception ex)
             {
-                Log.Warning(ex, "[feishu] 加协作者异常(不阻断)");
+                Log.Warning(ex, "[feishu] 设置链接分享异常(不阻断)");
+            }
+
+            // 加协作者(失败不阻断推送,仅告警);邮箱未填则跳过——Base建在用户文件夹(已授权)时本就无需额外共享
+            if (!string.IsNullOrWhiteSpace(config.FeishuUserEmail))
+            {
+                try
+                {
+                    var permResp = await client.PostAsJsonAsync(
+                        $"{FEISHU_HOST}/open-apis/drive/v1/permissions/{appToken}/members?type=bitable",
+                        new { member_type = "email", member_id = config.FeishuUserEmail, perm = "edit" });
+                    var permBody = await permResp.Content.ReadFromJsonAsync<FeishuResp<object>>();
+                    if (permBody?.Code != 0)
+                        Log.Warning("[feishu] 加协作者失败: code={Code} msg={Msg}", permBody?.Code, permBody?.Msg);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex, "[feishu] 加协作者异常(不阻断)");
+                }
             }
 
             config.FeishuBaseTokenCache = appToken;
             config.FeishuBaseMonthCache = month;
             await commonService.UpdateConfig(config);
             return appToken;
+        }
+
+        /// <summary>定位/创建专属文件夹「抖小云同步数据」:缓存命中直接用,否则 drive/v1 create_folder 建在应用根空间并记缓存。文件夹本身不支持public链接共享,逐个Base设。</summary>
+        private async Task<string> EnsureAutoFolderAsync(HttpClient client, AppConfig config)
+        {
+            if (!string.IsNullOrWhiteSpace(config.FeishuAutoFolderToken))
+                return config.FeishuAutoFolderToken;
+
+            var resp = await client.PostAsJsonAsync($"{FEISHU_HOST}/open-apis/drive/v1/files/create_folder",
+                new { name = "抖小云同步数据", folder_token = "" });
+            var body = await resp.Content.ReadFromJsonAsync<FeishuResp<FeishuFolderData>>();
+            if (body?.Code != 0 || string.IsNullOrEmpty(body.Data?.Token))
+                throw new Exception($"飞书创建文件夹失败: code={body?.Code} msg={body?.Msg}");
+            Log.Information("[feishu] 新建专属文件夹 {Token}", body.Data.Token);
+            config.FeishuAutoFolderToken = body.Data.Token;
+            await commonService.UpdateConfig(config);
+            return body.Data.Token;
         }
 
         // ==================== Table ====================
@@ -210,8 +257,8 @@ namespace dy.net.service
 
             var fields = new object[]
             {
-                new { field_name = "同步时间", type = 5, property = new { date_formatter = "yyyy/M/d HH:mm" } },
-                new { field_name = "发布时间", type = 5, property = new { date_formatter = "yyyy/M/d HH:mm" } },
+                new { field_name = "同步时间", type = 5, property = new { date_formatter = "yyyy/MM/dd HH:mm" } },
+                new { field_name = "发布时间", type = 5, property = new { date_formatter = "yyyy/MM/dd HH:mm" } },
                 new { field_name = "同步类型", type = 3 },
                 new { field_name = "博主", type = 1 },
                 new { field_name = "视频类型", type = 3 },
