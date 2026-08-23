@@ -85,12 +85,16 @@ namespace dy.net.Controllers
                     detail = $"{ex.Message}。请回到设置页重试。";
                 }
             }
+            var safeTitle = HtmlEncode(title);
+            var safeDetail = HtmlEncode(detail);
             var html = $@"<!DOCTYPE html><html><head><meta charset=""utf-8""><title>抖小云飞书授权</title></head>
 <body style=""font-family:system-ui;padding:40px;text-align:center"">
-<h2>{title}</h2><p style=""color:#555"">{detail}</p>
+<h2>{safeTitle}</h2><p style=""color:#555"">{safeDetail}</p>
 <p style=""color:#999;font-size:13px"">本页面可关闭</p></body></html>";
             return Content(html, "text/html", Encoding.UTF8);
         }
+
+        private static string HtmlEncode(string s) => System.Net.WebUtility.HtmlEncode(s ?? string.Empty);
 
         /// <summary>立即推送今天(幂等:当天表清空重写,重复调用不产生重复行)。</summary>
         [HttpPost("push/today")]
