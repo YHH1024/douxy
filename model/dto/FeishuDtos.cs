@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace dy.net.model.dto
@@ -100,5 +101,18 @@ namespace dy.net.model.dto
         [JsonPropertyName("refresh_token_expires_in")] public int? RefreshExpiresIn { get; set; }
         [JsonPropertyName("error")] public string Error { get; set; }
         [JsonPropertyName("error_description")] public string ErrorDescription { get; set; }
+    }
+
+    /// <summary>records 读回的完整行(回填匹配用):record_id + fields。</summary>
+    internal class FeishuRecordFullData
+    {
+        [JsonPropertyName("items")] public List<FeishuRecordFull> Items { get; set; }
+        [JsonPropertyName("has_more")] public bool HasMore { get; set; }
+        [JsonPropertyName("page_token")] public string PageToken { get; set; }
+    }
+    internal class FeishuRecordFull
+    {
+        [JsonPropertyName("record_id")] public string RecordId { get; set; }
+        [JsonPropertyName("fields")] public JsonElement Fields { get; set; }
     }
 }

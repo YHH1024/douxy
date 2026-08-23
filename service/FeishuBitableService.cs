@@ -464,5 +464,117 @@ namespace dy.net.service
                 await Task.Delay(BATCH_DELAY_MS);
             }
         }
+
+        /// <summary>统计回填:把变更视频的最新五项统计回写到它们当初推送的日期表原行(标题精确匹配)。
+        /// 只处理本月 Base 内的表(跨月旧表跳过);飞书未配置/无缓存返回0。</summary>
+        public async Task<int> UpdateStatsAsync(AppConfig config, List<DouyinVideo> changed)
+        {
+            if (changed == null || changed.Count == 0) return 0;
+            if (string.IsNullOrWhiteSpace(config?.FeishuBaseTokenCache)) return 0;
+
+            var client = await AuthedClientAsync(config);
+            var baseToken = config.FeishuBaseTokenCache;
+
+            // 列出本月 Base 全部表,建表名→table_id 映射
+            var listResp = await client.GetAsync($"{FEISHU_HOST}/open-apis/bitable/v1/apps/{baseToken}/tables?page_size=100");
+            var listBody = await listResp.Content.ReadFromJsonAsync<FeishuResp<FeishuTableListData>>();
+            if (listBody?.Code != 0) throw new Exception($"飞书获取表列表失败: code={listBody?.Code} msg={listBody?.Msg}");
+            var tableMap = (listBody.Data?.Items ?? new List<FeishuTableInfo>())
+                .GroupBy(t => t.Name).ToDictionary(g => g.Key, g => g.First().TableId);
+
+            int updated = 0, unmatched = 0;
+            // 按视频的入库日期分组 →「M月d日」表
+            foreach (var group in changed.GroupBy(v => v.SyncTime.Date))
+            {
+                var tableName = $"{group.Key.Month}月{group.Key.Day}日";
+                if (!tableMap.TryGetValue(tableName, out var tableId))
+                {
+                    unmatched += group.Count();
+                    continue;
+                }
+
+                // 分页读回该表全部行(record_id → 标题)
+                var rowTitles = new Dictionary<string, string>(); // record_id → 标题
+                string pageToken = null;
+                do
+                {
+                    var url = $"{FEISHU_HOST}/open-apis/bitable/v1/apps/{baseToken}/tables/{tableId}/records?page_size=500"
+                            + (pageToken == null ? "" : $"&page_token={pageToken}");
+                    var resp = await client.GetAsync(url);
+                    var body = await resp.Content.ReadFromJsonAsync<FeishuResp<FeishuRecordFullData>>();
+                    if (body?.Code != 0) throw new Exception($"飞书读取记录失败: code={body?.Code} msg={body?.Msg}");
+                    foreach (var item in body.Data?.Items ?? new List<FeishuRecordFull>())
+                    {
+                        var title = ReadTextField(item.Fields, "视频标题");
+                        if (!string.IsNullOrWhiteSpace(title)) rowTitles[item.RecordId] = title;
+                    }
+                    pageToken = body.Data?.HasMore == true ? body.Data.PageToken : null;
+                } while (pageToken != null);
+
+                // 标题 → record_id(同表标题唯一性足够;重复取第一行)
+                var titleToRecord = rowTitles.GroupBy(kv => kv.Value).ToDictionary(g => g.Key, g => g.First().Key);
+
+                var updates = new List<object>();
+                foreach (var video in group)
+                {
+                    if (video.VideoTitle == null || !titleToRecord.TryGetValue(video.VideoTitle, out var recordId))
+                    {
+                        unmatched++;
+                        continue;
+                    }
+                    updates.Add(new
+                    {
+                        record_id = recordId,
+                        fields = new Dictionary<string, object>
+                        {
+                            ["播放"] = video.PlayCount ?? 0,
+                            ["点赞"] = video.DiggCount ?? 0,
+                            ["评论"] = video.CommentCount ?? 0,
+                            ["分享"] = video.ShareCount ?? 0,
+                            ["收藏"] = video.CollectCount ?? 0,
+                        }
+                    });
+                }
+
+                foreach (var chunk in updates.Chunk(200))
+                {
+                    var upResp = await client.PostAsJsonAsync(
+                        $"{FEISHU_HOST}/open-apis/bitable/v1/apps/{baseToken}/tables/{tableId}/records/batch_update",
+                        new { records = chunk });
+                    var upBody = await upResp.Content.ReadFromJsonAsync<FeishuResp<object>>();
+                    if (upBody?.Code == 1254291)
+                    {
+                        await Task.Delay(RETRY_DELAYS[0]);
+                        upResp = await client.PostAsJsonAsync(
+                            $"{FEISHU_HOST}/open-apis/bitable/v1/apps/{baseToken}/tables/{tableId}/records/batch_update",
+                            new { records = chunk });
+                        upBody = await upResp.Content.ReadFromJsonAsync<FeishuResp<object>>();
+                    }
+                    EnsureOk(upBody, "统计回写");
+                    updated += chunk.Length;
+                    await Task.Delay(BATCH_DELAY_MS);
+                }
+            }
+            Log.Information("[feishu] 统计回写完成 updated={Updated} unmatched={Unmatched}", updated, unmatched);
+            return updated;
+        }
+
+        /// <summary>从飞书 fields(JsonElement)里取文本字段值(富文本 [{text}] 拼接;纯字符串直取)。</summary>
+        private static string ReadTextField(JsonElement fields, string name)
+        {
+            if (fields.ValueKind != JsonValueKind.Object || !fields.TryGetProperty(name, out var v)) return null;
+            if (v.ValueKind == JsonValueKind.String) return v.GetString();
+            if (v.ValueKind == JsonValueKind.Array)
+            {
+                var sb = new System.Text.StringBuilder();
+                foreach (var seg in v.EnumerateArray())
+                {
+                    if (seg.ValueKind == JsonValueKind.Object && seg.TryGetProperty("text", out var t))
+                        sb.Append(t.GetString());
+                }
+                return sb.ToString();
+            }
+            return null;
+        }
     }
 }
