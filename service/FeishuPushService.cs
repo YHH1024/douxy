@@ -13,20 +13,23 @@ namespace dy.net.service
         private readonly DouyinVideoService douyinVideoService;
         private readonly FeishuBitableService bitableService;
         private readonly FeishuNotifyService notifyService;
+        private readonly LocalAsrSubtitleService asrSubtitleService;
 
         // 手动推送与23:50定时任务互斥闸门
         private static readonly SemaphoreSlim _pushGate = new(1, 1);
 
         public FeishuPushService(DouyinCommonService commonService, DouyinVideoService douyinVideoService,
-            FeishuBitableService bitableService, FeishuNotifyService notifyService)
+            FeishuBitableService bitableService, FeishuNotifyService notifyService,
+            LocalAsrSubtitleService asrSubtitleService)
         {
             this.commonService = commonService;
             this.douyinVideoService = douyinVideoService;
             this.bitableService = bitableService;
             this.notifyService = notifyService;
+            this.asrSubtitleService = asrSubtitleService;
         }
 
-        public async Task<FeishuPushResult> RunDailyPushAsync()
+        public async Task<FeishuPushResult> RunDailyPushAsync(bool waitForSubtitles = false)
         {
             var config = commonService.GetConfig();
             if (config == null || !config.FeishuPushEnabled)
@@ -38,6 +41,42 @@ namespace dy.net.service
                 return new FeishuPushResult { Success = false, Message = "已有推送任务进行中,稍后再试" };
             try
             {
+                // 字幕等待(仅定时任务):今日存在字幕在转/待转的视频时推迟推送,直到全部终态或超保险丝。
+                // 失败(StatusMsg有值)是终态不阻塞;手动推送 waitForSubtitles=false 跳过整段。
+                if (waitForSubtitles)
+                {
+                    var deadline = DateTime.Now.AddHours(5); // 保险丝:最多等5小时(23:50→04:50),防ASR彻底故障时当天永不推送
+                    int consecutiveAsrFail = 0;
+                    bool asrAlarmSent = false;
+                    while (DateTime.Now < deadline)
+                    {
+                        var pendingCheck = (await douyinVideoService.GetAllAsync())
+                            .Where(v => v.SyncTime >= DateTime.Today);
+                        if (!pendingCheck.Any(v => string.IsNullOrWhiteSpace(v.SubtitleSavePath)
+                                                 && string.IsNullOrWhiteSpace(v.SubtitleStatusMsg)))
+                            break; // 全部终态,正常推送
+
+                        var asrHealth = await asrSubtitleService.CheckHealthAsync(config);
+                        if (asrHealth.Success)
+                        {
+                            consecutiveAsrFail = 0;
+                        }
+                        else
+                        {
+                            consecutiveAsrFail++;
+                            if (consecutiveAsrFail >= 2 && !asrAlarmSent)
+                            {
+                                asrAlarmSent = true; // 一晚只告警一次
+                                Log.Warning("[feishu] ASR不可用,推送等待中: {Msg}", asrHealth.Message);
+                                await notifyService.SendAsync(config,
+                                    $"【抖小云】ASR 服务不可用({asrHealth.Message}),今日飞书推送暂停等待中,请检查 ASR 服务");
+                            }
+                        }
+                        Log.Information("[feishu] 今日仍有字幕未就绪,10分钟后重查(截止 {Deadline:HH:mm})", deadline);
+                        await Task.Delay(TimeSpan.FromMinutes(10));
+                    }
+                }
+
             FeishuPushResult result;
             try
             {
