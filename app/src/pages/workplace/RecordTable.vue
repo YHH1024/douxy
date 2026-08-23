@@ -212,7 +212,8 @@
           <span v-else>-</span>
         </template>
         <template v-if="column.dataIndex === 'subtitle'">
-          <a-tag v-if="subtitleStatusOf(record) === 'processing'" color="processing">转换中</a-tag>
+          <a-tag v-if="subtitleStatusOf(record) === 'queued'" color="warning">排队中</a-tag>
+          <a-tag v-else-if="subtitleStatusOf(record) === 'processing'" color="processing">转换中</a-tag>
           <a-tag v-else-if="subtitleStatusOf(record) === 'done'" color="success">已生成</a-tag>
           <a-tooltip v-else-if="subtitleStatusOf(record) === 'error'" :title="record.subtitleStatusMsg || '生成失败'">
             <a-tag color="error">失败</a-tag>
@@ -256,7 +257,7 @@
 </template>
 
 <script lang="ts" setup>
-import { reactive, ref, onMounted, nextTick, watch, computed } from 'vue';
+import { reactive, ref, onMounted, onUnmounted, nextTick, watch, computed } from 'vue';
 import { useApiStore } from '@/store';
 import type { UnwrapRef } from 'vue';
 import dayjs, { Dayjs } from 'dayjs';
@@ -293,6 +294,9 @@ interface DataItem {
   subtitleSavePath?: string;       // 非空=已生成
   subtitleStatusMsg?: string;      // 失败原因
   subtitleCreateTime?: string;     // 生成时间
+  // ASR 异步队列（后端列表已返回）
+  asrTaskId?: number;              // ASR 任务ID（非空=已提交队列）
+  asrTaskStatus?: number;          // 0=排队中 1=转换中
   // 视频统计（后端列表已返回）
   playCount?: number;      // 播放量
   diggCount?: number;      // 点赞
@@ -407,12 +411,25 @@ const copySubtitleContent = (text?: string) => {
 };
 
 /** 计算某行字幕状态，供模板 a-tag 使用 */
-const subtitleStatusOf = (record: DataItem): 'unprocessed' | 'processing' | 'done' | 'error' => {
+const subtitleStatusOf = (record: DataItem): 'unprocessed' | 'queued' | 'processing' | 'done' | 'error' => {
   if (generatingId.value && generatingId.value === record.id) return 'processing';
   if (record.subtitleSavePath) return 'done';
   if (record.subtitleStatusMsg) return 'error';
+  if (record.asrTaskStatus === 1) return 'processing';
+  if (record.asrTaskStatus === 0) return 'queued';
   return 'unprocessed';
 };
+
+// -------------------------- 条件轮询（存在排队/转换中行时 30s 刷新） --------------------------
+let listTimer: number | undefined;
+const armAutoRefresh = () => {
+  window.clearInterval(listTimer);
+  const hasPending = dataSource.value.some(r => ['queued', 'processing'].includes(subtitleStatusOf(r)));
+  if (hasPending) listTimer = window.setInterval(() => { GetRecords(); }, 30000);
+};
+onUnmounted(() => {
+  window.clearInterval(listTimer);
+});
 
 /** 数字格式化:万/亿中文缩写 */
 const formatCount = (n?: number): string => {
@@ -715,6 +732,7 @@ const GetRecords = () => {
         pagination.value.defaultPageSize = res.data.pageSize;
         pagination.value.total = res.data.total;
         pagination.value.showTotal = () => `共 ${res.data.total} 条`;
+        armAutoRefresh(); // 存在排队/转换中行时启动 30s 轮询
       } else {
         message.warning(res.message || '获取数据失败');
       }
