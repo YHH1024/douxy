@@ -271,6 +271,9 @@ namespace dy.net
                     // 飞书推送与Cookie有效性无关,独立调度(未开启时该方法内部会清理任务)
                     var feishuQuartzService = services.GetRequiredService<DouyinQuartzJobService>();
                     await feishuQuartzService.InitFeishuPushJob(config);
+                    // 关注视频统计回填(与Cookie/飞书配置无关)
+                    var backfillQuartzService = services.GetRequiredService<DouyinQuartzJobService>();
+                    await backfillQuartzService.InitVideoStatsBackfillJob();
                 }
             }
             catch (Exception ex)

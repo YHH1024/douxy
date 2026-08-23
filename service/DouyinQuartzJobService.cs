@@ -285,6 +285,31 @@ namespace dy.net.service
         }
 
         /// <summary>
+        /// 注册关注视频统计回填任务(每天05:30,发布≤3天视频刷新统计+回写飞书)。与飞书推送配置无关,无条件注册。
+        /// </summary>
+        public async Task InitVideoStatsBackfillJob()
+        {
+            var scheduler = await _schedulerFactory.GetScheduler();
+            var jobKey = new JobKey("stats.backfill.job.key.daily", DefaultJobGroup);
+            var triggerKey = new TriggerKey("stats.backfill.trigger.key.daily", DefaultJobGroup);
+
+            if (await scheduler.CheckExists(jobKey))
+                await scheduler.DeleteJob(jobKey);
+
+            var jobDetail = JobBuilder.Create<VideoStatsBackfillJob>()
+                .WithIdentity(jobKey)
+                .WithDescription("关注视频统计回填")
+                .DisallowConcurrentExecution()
+                .Build();
+            var trigger = TriggerBuilder.Create()
+                .WithIdentity(triggerKey)
+                .WithCronSchedule("0 30 5 * * ?")
+                .Build();
+            await scheduler.ScheduleJob(jobDetail, trigger);
+            Log.Information("【quartz】统计回填任务已调度,cron=0 30 5 * * ?");
+        }
+
+        /// <summary>
         /// 移除所有已存在的任务（避免重复调度）
         /// </summary>
         private static async Task RemoveAllExistingJobs(IScheduler scheduler)
