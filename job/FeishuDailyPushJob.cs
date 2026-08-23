@@ -16,7 +16,7 @@ namespace dy.net.job
 
         public async Task Execute(IJobExecutionContext context)
         {
-            await pushService.RunDailyPushAsync();
+            await pushService.RunDailyPushAsync(waitForSubtitles: true);
         }
     }
 }
