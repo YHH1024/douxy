@@ -129,12 +129,13 @@ namespace dy.net.service
                && config.FeishuUserRefreshExpiresAt.HasValue
                && config.FeishuUserRefreshExpiresAt.Value > DateTime.Now;
 
-        /// <summary>构造飞书用户授权页链接。scope 含 offline_access 才会返回 refresh_token。</summary>
+        /// <summary>构造飞书用户授权页链接。scope 含 offline_access 才会返回 refresh_token。
+        /// 2026-08 官方文档:新授权页在 accounts.feishu.cn,参数名 client_id(旧 open.feishu.cn/index?app_id= 已弃用,会报20029)。</summary>
         public Task<Uri> BuildAuthorizeUrlAsync(AppConfig config, string redirectUri, string state)
         {
             var scope = Uri.EscapeDataString("bitable:app drive:drive offline_access");
             var redirect = Uri.EscapeDataString(redirectUri);
-            var url = $"{FEISHU_HOST}/open-apis/authen/v1/index?app_id={config.FeishuAppId}&redirect_uri={redirect}&scope={scope}&state={state}";
+            var url = $"https://accounts.feishu.cn/open-apis/authen/v1/authorize?client_id={config.FeishuAppId}&redirect_uri={redirect}&scope={scope}&prompt=consent&state={state}";
             return Task.FromResult(new Uri(url));
         }
 

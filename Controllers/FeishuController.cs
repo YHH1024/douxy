@@ -41,9 +41,16 @@ namespace dy.net.Controllers
             var state = Guid.NewGuid().ToString("N");
             _oauthStates[state] = DateTime.Now;
             CleanupExpiredStates();
-            var redirectUri = $"{Request.Scheme}://{Request.Host.Host}:{Request.Host.Port ?? 10101}/api/feishu/oauth/callback";
-            var url = await bitableService.BuildAuthorizeUrlAsync(config, redirectUri, state);
-            return ApiResult.Success(new { url = url.ToString() });
+            var url = await bitableService.BuildAuthorizeUrlAsync(config, BuildCallbackUri(), state);
+            // AbsoluteUri 保留百分号编码;Uri.ToString() 会把 %20/%3A 还原成明文,空格进 query 会导致飞书 20029
+            return ApiResult.Success(new { url = url.AbsoluteUri });
+        }
+
+        /// <summary>回调地址=当前请求 Host,但 localhost 必须映射为 127.0.0.1——飞书 OAuth 拒绝 localhost 作 redirect_uri(配了也 20029),127.0.0.1 可过。</summary>
+        private string BuildCallbackUri()
+        {
+            var host = Request.Host.Host == "localhost" ? "127.0.0.1" : Request.Host.Host;
+            return $"{Request.Scheme}://{host}:{Request.Host.Port ?? 10101}/api/feishu/oauth/callback";
         }
 
         private static void CleanupExpiredStates()
@@ -74,8 +81,7 @@ namespace dy.net.Controllers
                 try
                 {
                     var config = commonService.GetConfig();
-                    var redirectUri = $"{Request.Scheme}://{Request.Host.Host}:{Request.Host.Port ?? 10101}/api/feishu/oauth/callback";
-                    await bitableService.ExchangeCodeAsync(config, code, redirectUri);
+                    await bitableService.ExchangeCodeAsync(config, code, BuildCallbackUri());
                     title = "授权成功";
                     detail = "推送将以你的身份执行。回到设置页确认「文件夹token」已填写后,点「立即推送今天」即可在你的文件夹生成表格。";
                 }
