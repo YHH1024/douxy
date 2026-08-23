@@ -41,18 +41,20 @@ namespace dy.net.job
             var targets = (await douyinVideoService.GetAllAsync())
                 .Where(v => v.ViedoType == VideoTypeEnum.dy_follows && v.CreateTime >= cutoff)
                 .ToList();
+            System.IO.File.AppendAllText("/tmp/backfill-diag.txt",
+                $"{DateTime.Now:HH:mm:ss} targets={targets.Count}\n");
             if (!targets.Any())
             {
                 Serilog.Log.Debug("[stats-backfill] 无发布≤3天的关注视频,跳过");
                 return;
             }
 
-            var cookies = await douyinCookieService.GetOpendCookiesAsync(
-                x => !string.IsNullOrWhiteSpace(x.UpSavePath));
+            // 回填只要登录态拉数据,不要求配置关注视频存储路径(那是「下载关注视频」的业务条件)
+            var cookies = await douyinCookieService.GetOpendCookiesAsync(x => true);
             var cookie = cookies?.FirstOrDefault();
             if (cookie == null)
             {
-                Serilog.Log.Debug("[stats-backfill] 无可用Cookie(需配置关注视频存储路径),跳过");
+                Serilog.Log.Debug("[stats-backfill] 无可用Cookie,跳过");
                 return;
             }
 
@@ -61,6 +63,8 @@ namespace dy.net.job
             foreach (var authorGroup in targets.GroupBy(v => v.AuthorId))
             {
                 var followed = await douyinFollowService.GetByUperId(authorGroup.Key, cookie.MyUserId);
+                System.IO.File.AppendAllText("/tmp/backfill-diag.txt",
+                    $"{DateTime.Now:HH:mm:ss} author={authorGroup.Key} followed={(followed != null)} changed={changed.Count}\n");
                 if (followed == null || string.IsNullOrWhiteSpace(followed.SecUid))
                 {
                     Serilog.Log.Debug("[stats-backfill] 博主 {Author} 不在关注表或无SecUid,跳过", authorGroup.Key);
