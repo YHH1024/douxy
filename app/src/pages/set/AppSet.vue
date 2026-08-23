@@ -612,8 +612,19 @@ const feishuOauthInfo = ref<{ authorized: boolean; refreshExpiresAt?: string }>(
 const handleFeishuOauth = () => {
   feishuOauthLoading.value = true;
   useApiStore().FeishuOauthUrl().then((res: any) => {
-    if (res?.data?.url) window.open(res.data.url, '_blank');
-    else message.error(res?.message || '生成授权链接失败');
+    if (res?.data?.url) {
+      const win = window.open(res.data.url, '_blank');
+      if (win) {
+        const timer = window.setInterval(() => {
+          if (win.closed) {
+            window.clearInterval(timer);
+            loadFeishuStatus();
+          }
+        }, 1000);
+      }
+    } else {
+      message.error(res?.message || '生成授权链接失败');
+    }
   }).finally(() => {
     feishuOauthLoading.value = false;
   });
