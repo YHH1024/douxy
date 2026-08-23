@@ -190,6 +190,16 @@ namespace dy.net.model.entity
         [SugarColumn(Length = 500, IsNullable = true)]
         public string SubtitleStatusMsg { get; set; }
 
+        /// <summary>ASR异步队列任务id(null=未提交)</summary>
+        [SugarColumn(IsNullable = true)]
+        public long? AsrTaskId { get; set; }
+        /// <summary>ASR队列镜像状态:0排队/1转换中(终态不存)</summary>
+        [SugarColumn(IsNullable = true)]
+        public int? AsrTaskStatus { get; set; }
+        /// <summary>队列任务404重报次数,≥3置失败</summary>
+        [SugarColumn(IsNullable = true)]
+        public int AsrRetryCount { get; set; }
+
         /// <summary>
         /// 播放量
         /// </summary>

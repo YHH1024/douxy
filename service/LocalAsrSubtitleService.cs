@@ -575,7 +575,87 @@ namespace dy.net.service
             public List<AsrSegment> Segments { get; set; } = new();
         }
 
-        private sealed class AsrSegment
+        // ==================== 异步队列客户端(SubtitleQueueJob 用) ====================
+
+        /// <summary>上传文件到 ASR 异步队列(幂等键防重复转写)。返回(task_id, 是否去重命中)。</summary>
+        public async Task<(bool Ok, long TaskId, bool Dedup, string Error)> QueueSubmitAsync(
+            AppConfig config, string videoPath, string title, string idempotencyKey,
+            CancellationToken ct = default)
+        {
+            try
+            {
+                var validation = ValidateConfig(config);
+                if (!validation.Success) return (false, 0, false, validation.Message);
+                var client = _httpClientFactory.CreateClient(ASR_HTTP_CLIENT);
+
+                await using var fs = new FileStream(videoPath, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, true);
+                using var fc = new StreamContent(fs);
+                fc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+                using var form = new MultipartFormDataContent();
+                form.Add(fc, "file", Path.GetFileName(videoPath));
+                form.Add(new StringContent(title ?? string.Empty), "title");
+                form.Add(new StringContent("dysync-queue"), "source");
+                form.Add(new StringContent(idempotencyKey ?? string.Empty), "idempotency_key");
+
+                var resp = await client.PostAsync(BuildEndpoint(validation.ServiceUrl, "/api/transcribe/submit"), form, ct);
+                var body = await resp.Content.ReadFromJsonAsync<AsrSubmitResp>(cancellationToken: ct);
+                if (!resp.IsSuccessStatusCode || body == null || body.TaskId == 0)
+                    return (false, 0, false, $"submit失败: HTTP {(int)resp.StatusCode}");
+                return (true, body.TaskId, body.Deduplicated, string.Empty);
+            }
+            catch (Exception ex)
+            {
+                return (false, 0, false, ex.Message);
+            }
+        }
+
+        /// <summary>查询队列任务状态。Status=-1 表示 404(任务丢失/GC)。成功时带全文与分段。</summary>
+        public async Task<(int Status, string Text, List<AsrSegment> Segments, string Error)> QueueStatusAsync(
+            AppConfig config, long taskId, CancellationToken ct = default)
+        {
+            try
+            {
+                var validation = ValidateConfig(config);
+                if (!validation.Success) return (-2, null, null, validation.Message);
+                var client = _httpClientFactory.CreateClient(ASR_HTTP_CLIENT);
+                var resp = await client.GetAsync($"{validation.ServiceUrl}/api/asr/status?task_id={taskId}", ct);
+                if ((int)resp.StatusCode == 404) return (-1, null, null, "task not found");
+                var body = await resp.Content.ReadFromJsonAsync<AsrQueueStatusResp>(cancellationToken: ct);
+                if (body == null) return (-2, null, null, "响应解析失败");
+                var segs = body.ResultDetail?.Select(d => new AsrSegment
+                {
+                    Text = d.FinalSentence,
+                    StartMs = d.StartMs,
+                    EndMs = d.EndMs,
+                }).ToList() ?? new List<AsrSegment>();
+                return (body.Status, body.Result ?? string.Empty, segs, body.ErrorMsg ?? string.Empty);
+            }
+            catch (Exception ex)
+            {
+                return (-2, null, null, ex.Message);
+            }
+        }
+
+        private sealed class AsrSubmitResp
+        {
+            [System.Text.Json.Serialization.JsonPropertyName("task_id")] public long TaskId { get; set; }
+            [System.Text.Json.Serialization.JsonPropertyName("deduplicated")] public bool Deduplicated { get; set; }
+        }
+        private sealed class AsrQueueStatusResp
+        {
+            [System.Text.Json.Serialization.JsonPropertyName("status")] public int Status { get; set; }
+            [System.Text.Json.Serialization.JsonPropertyName("result")] public string Result { get; set; }
+            [System.Text.Json.Serialization.JsonPropertyName("result_detail")] public List<AsrQueueDetail> ResultDetail { get; set; }
+            [System.Text.Json.Serialization.JsonPropertyName("error_msg")] public string ErrorMsg { get; set; }
+        }
+        private sealed class AsrQueueDetail
+        {
+            [System.Text.Json.Serialization.JsonPropertyName("FinalSentence")] public string FinalSentence { get; set; }
+            [System.Text.Json.Serialization.JsonPropertyName("StartMs")] public long StartMs { get; set; }
+            [System.Text.Json.Serialization.JsonPropertyName("EndMs")] public long EndMs { get; set; }
+        }
+
+        public sealed class AsrSegment
         {
             public long StartMs { get; set; }
 
