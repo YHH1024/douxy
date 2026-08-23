@@ -68,7 +68,9 @@ namespace dy.net.job
                         }
                         catch (Exception ex)
                         {
-                            v.SubtitleStatusMsg = $"写回失败: {ex.Message}";
+                            Serilog.Log.Debug(ex, "[subtitle-queue] 写回失败 {Id},下轮重试", v.Id);
+                            v.AsrTaskId = null;
+                            v.AsrTaskStatus = null;
                             await douyinVideoService.UpdateOne(v);
                         }
                         break;
