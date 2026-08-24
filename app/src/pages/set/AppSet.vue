@@ -218,9 +218,6 @@
           <a-form-item label="App Secret" name="FeishuAppSecret">
             <a-input-password v-model:value="formState.FeishuAppSecret" placeholder="飞书自建应用 app_secret" />
           </a-form-item>
-          <a-form-item label="飞书邮箱" name="FeishuUserEmail">
-            <a-input v-model:value="formState.FeishuUserEmail" placeholder="新建多维表格后加你为协作者" />
-          </a-form-item>
           <a-form-item label="群机器人webhook" name="FeishuNotifyWebhook">
             <a-input v-model:value="formState.FeishuNotifyWebhook" placeholder="推送结果通知(可空)" />
           </a-form-item>
@@ -455,7 +452,6 @@ interface FormState {
   FeishuPushEnabled: boolean;
   FeishuAppId: string;
   FeishuAppSecret: string;
-  FeishuUserEmail: string;
   FeishuNotifyWebhook: string;
   FeishuFolderToken: string;
   FeishuPushCron: string;
@@ -492,7 +488,6 @@ const formState: UnwrapRef<FormState> = reactive({
   FeishuPushEnabled: false,
   FeishuAppId: '',
   FeishuAppSecret: '',
-  FeishuUserEmail: '',
   FeishuNotifyWebhook: '',
   FeishuFolderToken: '',
   FeishuPushCron: ''
@@ -579,7 +574,6 @@ const getConfig = () => {
           FeishuPushEnabled: res.data.feishuPushEnabled || false,
           FeishuAppId: res.data.feishuAppId || '',
           FeishuAppSecret: res.data.feishuAppSecret || '',
-          FeishuUserEmail: res.data.feishuUserEmail || '',
           FeishuNotifyWebhook: res.data.feishuNotifyWebhook || '',
           FeishuFolderToken: res.data.feishuFolderToken || '',
           FeishuPushCron: res.data.feishuPushCron || ''

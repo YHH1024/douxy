@@ -36,6 +36,10 @@ namespace dy.net.service
                 return new FeishuPushResult { Success = false, Message = "飞书推送未开启" };
             if (string.IsNullOrWhiteSpace(config.FeishuAppId) || string.IsNullOrWhiteSpace(config.FeishuAppSecret))
                 return new FeishuPushResult { Success = false, Message = "飞书AppId/AppSecret未配置" };
+            // 2026-08-24 方案B:推送强制用户身份——未授权直接失败并提示,不再静默回落应用空间
+            // (避免表格建到机器人空间造成困惑;回落代码保留但推送路径不再触达)
+            if (!bitableService.HasUserAuth(config))
+                return new FeishuPushResult { Success = false, Message = "飞书账号未授权——请到设置页点击「授权飞书账号」后重试" };
 
             if (!await _pushGate.WaitAsync(0))
                 return new FeishuPushResult { Success = false, Message = "已有推送任务进行中,稍后再试" };
