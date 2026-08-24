@@ -94,8 +94,9 @@ namespace dy.net.job
                 }
             }
 
-            // ---- ② 提交新的(48h窗口,限100) ----
-            var cutoff = DateTime.Now.AddHours(-48);
+            // ---- ② 提交新的(可配回扫窗口 AsrBackfillHours,默认48h;调大可转历史视频。限100/轮) ----
+            var backfillHours = config.AsrBackfillHours <= 0 ? 24 : config.AsrBackfillHours; // 0视为只转当天(24h)
+            var cutoff = DateTime.Now.AddHours(-backfillHours);
             var toSubmit = all.Where(v => string.IsNullOrWhiteSpace(v.SubtitleSavePath)
                 && string.IsNullOrWhiteSpace(v.SubtitleStatusMsg)
                 && !v.AsrTaskId.HasValue

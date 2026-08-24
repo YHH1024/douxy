@@ -163,6 +163,12 @@ namespace dy.net.model.entity
         [SugarColumn(IsNullable = true)]
         public bool AsrOverwriteExisting { get; set; }
 
+        /// <summary>
+        /// 字幕队列回扫窗口(小时):入库时间在窗口内的无字幕视频会被自动提交转写。默认48;调大可转历史视频(如720=30天,8760=1年,0=只转当天)
+        /// </summary>
+        [SugarColumn(IsNullable = true)]
+        public int AsrBackfillHours { get; set; } = 48;
+
         /// <summary>飞书推送总开关</summary>
         public bool FeishuPushEnabled { get; set; }
         /// <summary>飞书自建应用 AppId</summary>

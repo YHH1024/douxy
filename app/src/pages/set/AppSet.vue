@@ -203,6 +203,13 @@
         <a-form-item label="覆盖已有字幕" name="AsrOverwriteExisting">
           <a-switch v-model:checked="formState.AsrOverwriteExisting" />
         </a-form-item>
+        <a-form-item label="回扫窗口" name="AsrBackfillHours">
+          <a-select v-model:value="formState.AsrBackfillHours" style="width: 160px" :options="asrBackfillOptions" />
+          <div class="flex items-start mt-1 text-sm text-gray-500">
+            <InfoCircleOutlined class="text-blue-400 mr-1 mt-0.5" />
+            <span>自动转写字幕的视频时间范围（按入库时间）。需要补转历史视频时临时调大（如 30 天），转完调回 2 天</span>
+          </div>
+        </a-form-item>
         <a-form-item label="视频统计">
           <a-button :loading="backfillLoading" @click="handleBackfillStats">回填统计数据</a-button>
           <span style="margin-left: 8px; color: #888; font-size: 12px">为已同步视频补齐播放/点赞等数据，不影响视频文件</span>
@@ -371,6 +378,15 @@ import {
 // 表单引用
 const formRef = ref<FormInstance>();
 
+// 字幕回扫窗口选项(小时)
+const asrBackfillOptions = [
+  { value: 24, label: '只转当天(24h)' },
+  { value: 48, label: '近2天(默认)' },
+  { value: 168, label: '近7天' },
+  { value: 720, label: '近30天' },
+  { value: 8760, label: '近1年(全量)' },
+];
+
 // 模板字段：结构化数组
 const template_options = [
   { label: '{Id} (视频ID)', value: '{Id}' },
@@ -451,6 +467,7 @@ interface FormState {
   AutoGenSubtitle: boolean;
   AsrServiceUrl: string;
   AsrLanguage: string;
+  AsrBackfillHours: number;
   AsrPrompt: string;
   AsrOverwriteExisting: boolean;
   FeishuPushEnabled: boolean;
@@ -487,6 +504,7 @@ const formState: UnwrapRef<FormState> = reactive({
   AutoGenSubtitle: false,
   AsrServiceUrl: 'http://127.0.0.1:8010',
   AsrLanguage: 'zh',
+  AsrBackfillHours: 48,
   AsrPrompt: '',
   AsrOverwriteExisting: false,
   FeishuPushEnabled: false,
@@ -573,6 +591,7 @@ const getConfig = () => {
           AutoGenSubtitle: res.data.autoGenSubtitle || false,
           AsrServiceUrl: res.data.asrServiceUrl || 'http://127.0.0.1:8010',
           AsrLanguage: res.data.asrLanguage || 'zh',
+          AsrBackfillHours: res.data.asrBackfillHours ?? 48,
           AsrPrompt: res.data.asrPrompt || '',
           AsrOverwriteExisting: res.data.asrOverwriteExisting || false,
           FeishuPushEnabled: res.data.feishuPushEnabled || false,
