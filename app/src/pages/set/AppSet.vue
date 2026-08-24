@@ -222,7 +222,11 @@
             <a-input v-model:value="formState.FeishuNotifyWebhook" placeholder="推送结果通知(可空)" />
           </a-form-item>
           <a-form-item label="文件夹token" name="FeishuFolderToken">
-            <a-input v-model:value="formState.FeishuFolderToken" placeholder="月度表格存放位置(可空,空则应用根空间)" />
+            <a-input v-model:value="formState.FeishuFolderToken" placeholder="月度表格存放位置(必填,你自己文件夹的token)" />
+            <div class="flex items-start mt-1 text-sm text-gray-500">
+              <InfoCircleOutlined class="text-blue-400 mr-1 mt-0.5" />
+              <span>飞书→云文档→打开你的文件夹,浏览器地址栏 folder/ 后面那串。每月多维表格自动建在这个文件夹里</span>
+            </div>
           </a-form-item>
           <a-form-item label="账号授权" name="FeishuOauth">
             <a-space direction="vertical" :size="4" style="width: 100%">
@@ -231,11 +235,11 @@
                 <span v-if="feishuOauthInfo.authorized" style="color: #52c41a; font-size: 13px">
                   已授权（刷新凭证至 {{ feishuOauthInfo.refreshExpiresAt }}）
                 </span>
-                <span v-else style="color: #999; font-size: 13px">未授权（推送将以应用身份执行，表格建在应用空间）</span>
+                <span v-else style="color: #faad14; font-size: 13px">未授权（推送无法执行，请点击授权）</span>
               </a-space>
               <span style="color: #999; font-size: 12px">
-                授权后推送以你的身份执行，多维表格直接建在上面的「文件夹token」文件夹里。首次使用需在飞书开发者后台→安全设置→重定向 URL 添加：
-                http://localhost:10101/api/feishu/oauth/callback
+                授权后推送以你的身份执行，多维表格直接建在上面的「文件夹token」文件夹里，归属你自己。首次使用需在飞书开发者后台→安全设置→重定向 URL 添加：
+                http://127.0.0.1:10101/api/feishu/oauth/callback（必须 127.0.0.1，不能用 localhost）
               </span>
             </a-space>
           </a-form-item>
