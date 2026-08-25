@@ -171,6 +171,9 @@ namespace dy.net.model.entity
 
         /// <summary>飞书推送总开关</summary>
         public bool FeishuPushEnabled { get; set; }
+        /// <summary>内网访问地址(如 http://192.168.1.50:10101)——飞书「内网播放」链接基数,指向本机/NAS上的视频流接口</summary>
+        [SugarColumn(Length = 200, IsNullable = true)]
+        public string LanBaseUrl { get; set; }
         /// <summary>飞书自建应用 AppId</summary>
         [SugarColumn(Length = 100, IsNullable = true)]
         public string FeishuAppId { get; set; }

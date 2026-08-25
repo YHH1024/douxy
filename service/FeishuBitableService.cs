@@ -391,6 +391,7 @@ namespace dy.net.service
                 new { field_name = "收藏", type = 2, property = new { formatter = "0" } },
                 new { field_name = "字幕全文", type = 1 },
                 new { field_name = "播放链接", type = 15 }, // 超链接字段:写入{link,text}对象(probe实证;type1不吃段数组1254060)
+                new { field_name = "内网播放", type = 15 },
             };
             var createResp = await client.PostAsJsonAsync($"{FEISHU_HOST}/open-apis/bitable/v1/apps/{baseToken}/tables",
                 new { table = new { name = tableName, fields } });
@@ -401,7 +402,7 @@ namespace dy.net.service
             return createBody.Data.TableId;
         }
 
-        /// <summary>老表自动补列:表已存在但缺「播放链接」(2026-08-25 前建的13列表)时调 fields API 追加。失败不阻断推送。</summary>
+        /// <summary>老表自动补列:表已存在但缺超链接列(播放链接/内网播放)时调 fields API 追加。失败不阻断推送。</summary>
         private async Task EnsurePlayUrlFieldAsync(AppConfig config, string baseToken, string tableId)
         {
             try
@@ -414,20 +415,23 @@ namespace dy.net.service
                     Log.Warning("[feishu] 读字段列表失败(跳过补列): code={Code} msg={Msg}", fieldsBody?.Code, fieldsBody?.Msg);
                     return;
                 }
-                if (fieldsBody.Data.Items.Any(f => f.FieldName == "播放链接")) return; // 已有,无需补
-
-                var addResp = await client.PostAsJsonAsync(
-                    $"{FEISHU_HOST}/open-apis/bitable/v1/apps/{baseToken}/tables/{tableId}/fields",
-                    new { field_name = "播放链接", type = 15 });
-                var addBody = await addResp.Content.ReadFromJsonAsync<FeishuResp<object>>();
-                if (addBody?.Code == 0)
-                    Log.Information("[feishu] 老表已自动补「播放链接」列 {TableId}", tableId);
-                else
-                    Log.Warning("[feishu] 补「播放链接」列失败(不阻断推送): code={Code} msg={Msg}", addBody?.Code, addBody?.Msg);
+                var existing = fieldsBody.Data.Items.Select(f => f.FieldName).ToHashSet();
+                foreach (var name in new[] { "播放链接", "内网播放" })
+                {
+                    if (existing.Contains(name)) continue;
+                    var addResp = await client.PostAsJsonAsync(
+                        $"{FEISHU_HOST}/open-apis/bitable/v1/apps/{baseToken}/tables/{tableId}/fields",
+                        new { field_name = name, type = 15 });
+                    var addBody = await addResp.Content.ReadFromJsonAsync<FeishuResp<object>>();
+                    if (addBody?.Code == 0)
+                        Log.Information("[feishu] 老表已自动补「{Name}」列 {TableId}", name, tableId);
+                    else
+                        Log.Warning("[feishu] 补「{Name}」列失败(不阻断推送): code={Code} msg={Msg}", name, addBody?.Code, addBody?.Msg);
+                }
             }
             catch (Exception ex)
             {
-                Log.Warning(ex, "[feishu] 补「播放链接」列异常(不阻断推送)");
+                Log.Warning(ex, "[feishu] 补超链接列异常(不阻断推送)");
             }
         }
 
@@ -493,6 +497,10 @@ namespace dy.net.service
                         ["播放链接"] = string.IsNullOrWhiteSpace(r.PlayUrl)
                             ? (object)string.Empty
                             : new { link = r.PlayUrl, text = "▶ 打开视频" },
+                        // 内网播放:指向本机/NAS的流式接口(免登录),LanBaseUrl未配置时整列空
+                        ["内网播放"] = string.IsNullOrWhiteSpace(r.LanPlayUrl)
+                            ? (object)string.Empty
+                            : new { link = r.LanPlayUrl, text = "▶ 内网播放" },
                     }
                 }).ToList();
 

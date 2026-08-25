@@ -250,6 +250,13 @@
               </span>
             </a-space>
           </a-form-item>
+          <a-form-item label="内网地址" name="LanBaseUrl">
+            <a-input v-model:value="formState.LanBaseUrl" placeholder="如 http://192.168.1.50:10101（可空）" style="width: 320px" />
+            <div class="flex items-start mt-1 text-sm text-gray-500">
+              <InfoCircleOutlined class="text-blue-400 mr-1 mt-0.5" />
+              <span>填本机/NAS 在局域网的访问地址后，飞书表会多一列「内网播放」——点开直接流畅播放本地已下载的视频（免登录）。留空则不生成该列</span>
+            </div>
+          </a-form-item>
           <a-form-item label="推送时间" name="FeishuPushCron">
             <a-time-picker v-model:value="feishuPushTime" format="HH:mm" :minute-step="5" :allow-empty="false" placeholder="选择每天推送时刻" style="width: 140px" />
             <span style="margin-left: 8px; color: #888; font-size: 12px">每天该时刻推送当天数据(默认 23:50)</span>
@@ -475,6 +482,7 @@ interface FormState {
   FeishuAppSecret: string;
   FeishuNotifyWebhook: string;
   FeishuFolderToken: string;
+  LanBaseUrl: string;
   FeishuPushCron: string;
 }
 
@@ -512,6 +520,7 @@ const formState: UnwrapRef<FormState> = reactive({
   FeishuAppSecret: '',
   FeishuNotifyWebhook: '',
   FeishuFolderToken: '',
+  LanBaseUrl: '',
   FeishuPushCron: ''
 });
 
@@ -599,6 +608,7 @@ const getConfig = () => {
           FeishuAppSecret: res.data.feishuAppSecret || '',
           FeishuNotifyWebhook: res.data.feishuNotifyWebhook || '',
           FeishuFolderToken: res.data.feishuFolderToken || '',
+          LanBaseUrl: res.data.lanBaseUrl || '',
           FeishuPushCron: res.data.feishuPushCron || ''
         });
 

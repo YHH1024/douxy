@@ -84,6 +84,7 @@ namespace dy.net.service
             FeishuPushResult result;
             try
             {
+                var lanBase = config.LanBaseUrl; // 内网播放链接基数(空=不写内网列)
                 var all = await douyinVideoService.GetAllAsync();
                 var today = all.Where(v => v.SyncTime >= DateTime.Today).OrderBy(v => v.SyncTime).ToList();
                 var rows = new List<FeishuVideoRow>();
@@ -110,6 +111,9 @@ namespace dy.net.service
                         CollectCount = v.CollectCount ?? 0,
                         Subtitle = subtitle,
                         PlayUrl = string.IsNullOrWhiteSpace(v.AwemeId) ? string.Empty : $"https://www.douyin.com/video/{v.AwemeId}",
+                        LanPlayUrl = string.IsNullOrWhiteSpace(lanBase) || string.IsNullOrWhiteSpace(v.VideoSavePath)
+                            ? string.Empty
+                            : $"{lanBase.TrimEnd('/')}/api/video/play/{v.Id}",
                     });
                 }
                 result = await bitableService.PushDailyAsync(config, rows);

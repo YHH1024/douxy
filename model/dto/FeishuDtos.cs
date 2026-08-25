@@ -21,6 +21,8 @@ namespace dy.net.model.dto
         public string Subtitle { get; set; }
         /// <summary>抖音播放页链接(www.douyin.com/video/{AwemeId});AwemeId缺失为空串。</summary>
         public string PlayUrl { get; set; }
+        /// <summary>内网播放链接({LanBaseUrl}/api/video/play/{Id},免登录流式播放);LanBaseUrl未配置为空串。</summary>
+        public string LanPlayUrl { get; set; }
     }
 
     /// <summary>推送结果。</summary>
