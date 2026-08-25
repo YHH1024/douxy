@@ -155,8 +155,8 @@ namespace dy.net.service
             if (body?.Code != 0 || string.IsNullOrEmpty(body.AccessToken))
                 throw new Exception($"飞书授权码换token失败: code={body?.Code} {body?.Error} {body?.ErrorDescription}");
             await SaveUserTokensAsync(config, body);
-            config.FeishuBaseTokenCache = null;
-            config.FeishuBaseMonthCache = null;
+            // 2026-08-25 修复:同账号重新授权不再清Base缓存(曾导致文件夹里出现两个同名Base,旧Base成孤儿)。
+            // Base归属跟随授权用户,重授权同一账号时沿用即可;EnsureMonthlyBaseAsync访问失败时仍会重建兜底。
             await commonService.UpdateConfig(config);
             return body.AccessToken;
         }
@@ -243,12 +243,27 @@ namespace dy.net.service
 
         // ==================== Base ====================
 
-        /// <summary>定位本月Base:缓存命中直接用,否则新建+加协作者+写缓存。月份变了自动滚动。</summary>
+        /// <summary>定位本月Base:缓存命中直接用(先验可达,Base被删则自动重建),否则新建+写缓存。月份变了自动滚动。</summary>
         private async Task<string> EnsureMonthlyBaseAsync(AppConfig config)
         {
             var month = $"{DateTime.Now:yyyy-M}";
             if (config.FeishuBaseMonthCache == month && !string.IsNullOrWhiteSpace(config.FeishuBaseTokenCache))
-                return config.FeishuBaseTokenCache;
+            {
+                // 缓存可达性验证:Base被手动删除后token失效,直接用会在后续写入才炸——提前探一次,失效就走重建
+                try
+                {
+                    var probeClient = await AuthedClientAsync(config);
+                    var probeResp = await probeClient.GetAsync($"{FEISHU_HOST}/open-apis/bitable/v1/apps/{config.FeishuBaseTokenCache}/tables?page_size=1");
+                    var probeBody = await probeResp.Content.ReadFromJsonAsync<FeishuResp<FeishuTableListData>>();
+                    if (probeBody?.Code == 0)
+                        return config.FeishuBaseTokenCache;
+                    Log.Warning("[feishu] 缓存Base不可达(code={Code}),将重建", probeBody?.Code);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex, "[feishu] 缓存Base探测异常,将重建");
+                }
+            }
 
             var client = await AuthedClientAsync(config);
 
