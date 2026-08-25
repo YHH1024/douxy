@@ -109,6 +109,7 @@ namespace dy.net.service
                         ShareCount = v.ShareCount ?? 0,
                         CollectCount = v.CollectCount ?? 0,
                         Subtitle = subtitle,
+                        PlayUrl = string.IsNullOrWhiteSpace(v.AwemeId) ? string.Empty : $"https://www.douyin.com/video/{v.AwemeId}",
                     });
                 }
                 result = await bitableService.PushDailyAsync(config, rows);

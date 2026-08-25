@@ -355,7 +355,10 @@ namespace dy.net.service
                 throw new Exception($"飞书获取表列表失败: code={listBody?.Code} msg={listBody?.Msg}");
             var existing = listBody.Data?.Items?.FirstOrDefault(t => t.Name == tableName);
             if (existing != null)
+            {
+                await EnsurePlayUrlFieldAsync(config, baseToken, existing.TableId); // 老表自动补「播放链接」列
                 return existing.TableId;
+            }
 
             var fields = new object[]
             {
@@ -372,6 +375,7 @@ namespace dy.net.service
                 new { field_name = "分享", type = 2, property = new { formatter = "0" } },
                 new { field_name = "收藏", type = 2, property = new { formatter = "0" } },
                 new { field_name = "字幕全文", type = 1 },
+                new { field_name = "播放链接", type = 15 }, // 超链接字段:写入{link,text}对象(probe实证;type1不吃段数组1254060)
             };
             var createResp = await client.PostAsJsonAsync($"{FEISHU_HOST}/open-apis/bitable/v1/apps/{baseToken}/tables",
                 new { table = new { name = tableName, fields } });
@@ -380,6 +384,36 @@ namespace dy.net.service
                 throw new Exception($"飞书创建每日表失败: code={createBody?.Code} msg={createBody?.Msg}");
             Log.Information("[feishu] 新建每日表 {Name} {TableId}", tableName, createBody.Data.TableId);
             return createBody.Data.TableId;
+        }
+
+        /// <summary>老表自动补列:表已存在但缺「播放链接」(2026-08-25 前建的13列表)时调 fields API 追加。失败不阻断推送。</summary>
+        private async Task EnsurePlayUrlFieldAsync(AppConfig config, string baseToken, string tableId)
+        {
+            try
+            {
+                var client = await AuthedClientAsync(config);
+                var fieldsResp = await client.GetAsync($"{FEISHU_HOST}/open-apis/bitable/v1/apps/{baseToken}/tables/{tableId}/fields?page_size=100");
+                var fieldsBody = await fieldsResp.Content.ReadFromJsonAsync<FeishuResp<FeishuFieldListData>>();
+                if (fieldsBody?.Code != 0 || fieldsBody.Data?.Items == null)
+                {
+                    Log.Warning("[feishu] 读字段列表失败(跳过补列): code={Code} msg={Msg}", fieldsBody?.Code, fieldsBody?.Msg);
+                    return;
+                }
+                if (fieldsBody.Data.Items.Any(f => f.FieldName == "播放链接")) return; // 已有,无需补
+
+                var addResp = await client.PostAsJsonAsync(
+                    $"{FEISHU_HOST}/open-apis/bitable/v1/apps/{baseToken}/tables/{tableId}/fields",
+                    new { field_name = "播放链接", type = 15 });
+                var addBody = await addResp.Content.ReadFromJsonAsync<FeishuResp<object>>();
+                if (addBody?.Code == 0)
+                    Log.Information("[feishu] 老表已自动补「播放链接」列 {TableId}", tableId);
+                else
+                    Log.Warning("[feishu] 补「播放链接」列失败(不阻断推送): code={Code} msg={Msg}", addBody?.Code, addBody?.Msg);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "[feishu] 补「播放链接」列异常(不阻断推送)");
+            }
         }
 
         // ==================== Records ====================
@@ -440,6 +474,10 @@ namespace dy.net.service
                         ["分享"] = r.ShareCount,
                         ["收藏"] = r.CollectCount,
                         ["字幕全文"] = r.Subtitle ?? string.Empty,
+                        // 超链接字段(type=15)写{link,text}对象;飞书渲染成可点文本
+                        ["播放链接"] = string.IsNullOrWhiteSpace(r.PlayUrl)
+                            ? (object)string.Empty
+                            : new { link = r.PlayUrl, text = "▶ 打开视频" },
                     }
                 }).ToList();
 

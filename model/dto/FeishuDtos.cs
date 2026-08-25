@@ -19,6 +19,8 @@ namespace dy.net.model.dto
         public long ShareCount { get; set; }
         public long CollectCount { get; set; }
         public string Subtitle { get; set; }
+        /// <summary>抖音播放页链接(www.douyin.com/video/{AwemeId});AwemeId缺失为空串。</summary>
+        public string PlayUrl { get; set; }
     }
 
     /// <summary>推送结果。</summary>
@@ -85,6 +87,15 @@ namespace dy.net.model.dto
         [JsonPropertyName("items")] public List<FeishuRecordInfo> Items { get; set; }
         [JsonPropertyName("has_more")] public bool HasMore { get; set; }
         [JsonPropertyName("page_token")] public string PageToken { get; set; }
+    }
+    /// <summary>fields 列表响应(老表补列检测用)。</summary>
+    internal class FeishuFieldListData
+    {
+        [JsonPropertyName("items")] public List<FeishuFieldInfo> Items { get; set; }
+    }
+    internal class FeishuFieldInfo
+    {
+        [JsonPropertyName("field_name")] public string FieldName { get; set; }
     }
     internal class FeishuRecordInfo
     {
