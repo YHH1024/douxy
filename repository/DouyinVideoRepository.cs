@@ -31,6 +31,7 @@ namespace dy.net.repository
 
             DateTime? start2, end2;
             GetDateBetween(dto.Dates2, out start2, out end2);
+            // 日期上界语义：end 已含 +1 天（当天 23:59:59 也算），比较必须用开区间 < 而非 <=，否则选同一天时上界停在零点、当天数据全被排除
 
 
             VideoTypeEnum? enumviedoType = null;
@@ -45,9 +46,9 @@ namespace dy.net.repository
                 .WhereIF(!string.IsNullOrWhiteSpace(dto.Author), x => x.Author.Contains(dto.Author))
                 .WhereIF(!string.IsNullOrWhiteSpace(dto.Tag), x => x.Tag1 == dto.Tag)
                 .WhereIF(start.HasValue, x => x.SyncTime >= start.Value)
-                .WhereIF(end.HasValue, x => x.SyncTime <= end.Value)
+                .WhereIF(end.HasValue, x => x.SyncTime < end.Value)
                 .WhereIF(start2.HasValue, x => x.CreateTime >= start2.Value)
-                .WhereIF(end2.HasValue, x => x.CreateTime <= end2.Value)
+                .WhereIF(end2.HasValue, x => x.CreateTime < end2.Value)
                 .WhereIF(enumviedoType.HasValue, x => x.ViedoType == enumviedoType)
                 .WhereIF(!string.IsNullOrWhiteSpace(dto.CookieId),x=>x.CookieId==dto.CookieId)
                 .WhereIF(dto.ViedoType == "4", x => x.IsMergeVideo == 1);
@@ -84,7 +85,7 @@ namespace dy.net.repository
             if (dates != null && dates.Count == 2)
             {
                 start = Convert.ToDateTime(dates[0]);
-                end = Convert.ToDateTime(dates[1]);
+                end = Convert.ToDateTime(dates[1]).Date.AddDays(1);
             }
             else if (dates != null && dates.Count == 1)
             {

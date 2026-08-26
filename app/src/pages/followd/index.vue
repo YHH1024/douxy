@@ -264,9 +264,9 @@ const addFormErrors = ref({
   secUid: '',
 });
 
-// 搜索参数
+// 搜索参数（pageIndex 从 1 起：后端 Skip((PageIndex-1)*PageSize) 是 1 基准，传 0 时首屏靠负 Skip 兜底碰巧正常、滚动加载必重复）
 const quaryData: UnwrapRef<QuaryParam> = reactive({
-  pageIndex: 0,
+  pageIndex: 1,
   pageSize: 20,
   followUserName: null,
   mySelfId: '',
@@ -277,12 +277,12 @@ const quaryData: UnwrapRef<QuaryParam> = reactive({
 
 // 生命周期 - 挂载时初始化
 onMounted(() => {
-  quaryData.pageIndex = 0;
+  quaryData.pageIndex = 1;
   initData();
 });
 
 const onSyncFilterChange = () => {
-  quaryData.pageIndex = 0;
+  quaryData.pageIndex = 1;
   initData();
 };
 // 生命周期 - 卸载时移除滚动监听
@@ -405,7 +405,7 @@ const toggleSearchInput = () => {
     // 隐藏时清空搜索条件并重新加载
     if (quaryData.followUserName) {
       quaryData.followUserName = null;
-      quaryData.pageIndex = 0;
+      quaryData.pageIndex = 1;
       GetFollows(true);
     }
   }
@@ -413,7 +413,7 @@ const toggleSearchInput = () => {
 
 // 执行搜索
 const handleSearch = () => {
-  quaryData.pageIndex = 0;
+  quaryData.pageIndex = 1;
   noMoreData.value = false;
   hasMore.value = true;
   GetFollows(true);
@@ -425,7 +425,7 @@ const handleTabChange = (key: string) => {
 
   activeTabKey.value = key;
   quaryData.mySelfId = key;
-  quaryData.pageIndex = 0;
+  quaryData.pageIndex = 1;
   noMoreData.value = false;
   hasMore.value = true;
   searchInputVisible.value = false;
@@ -618,7 +618,7 @@ const handleAddSubmit = () => {
             message.success('新增非关注博主成功！');
             addModalVisible.value = false;
             // 重新加载数据
-            quaryData.pageIndex = 0;
+            quaryData.pageIndex = 1;
             GetFollows(true);
 
             // 更新Tab总数
