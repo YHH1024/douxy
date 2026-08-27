@@ -62,6 +62,7 @@ namespace dy.net.job
                             {
                                 // M1:空文本(纯音乐/VAD全滤)不落空文件,标终态可手动重试
                                 v.SubtitleStatusMsg = "ASR returned empty content.";
+                                v.AsrRetryCount = 0; // 清空历史计数,避免残留
                                 v.AsrTaskId = null; v.AsrTaskStatus = null;
                                 await douyinVideoService.UpdateSubtitleFieldsAsync(v);
                                 break;
