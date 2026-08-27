@@ -52,27 +52,42 @@ namespace dy.net.job
                         if (v.AsrTaskStatus != status) { v.AsrTaskStatus = status; await douyinVideoService.UpdateOne(v); }
                         break;
                     case 2: // 成功:写回(手动先完成则让位)
-                        if (!string.IsNullOrWhiteSpace(v.SubtitleSavePath)) { v.AsrTaskId = null; v.AsrTaskStatus = null; await douyinVideoService.UpdateOne(v); break; }
-                        var srt = LocalAsrSubtitleService.BuildSrtContentFrom(text, segs);
-                        var srtPath = Path.ChangeExtension(v.VideoSavePath, ".srt");
-                        var txtPath = Path.ChangeExtension(v.VideoSavePath, ".txt");
+                        if (!string.IsNullOrWhiteSpace(v.SubtitleSavePath)) { v.AsrTaskId = null; v.AsrTaskStatus = null; await douyinVideoService.UpdateSubtitleFieldsAsync(v); break; }
+                        var gate = LocalAsrSubtitleService.TryAcquireVideoGate(v.Id);
+                        if (gate == null) break; // 手动路径正在处理,本轮跳过
                         try
                         {
-                            await File.WriteAllTextAsync(srtPath, srt, System.Text.Encoding.UTF8);
-                            if (!string.IsNullOrWhiteSpace(text)) await File.WriteAllTextAsync(txtPath, text, System.Text.Encoding.UTF8);
-                            v.SubtitleSavePath = srtPath;
-                            v.SubtitleStatusMsg = "Subtitle generated via ASR queue.";
-                            v.SubtitleCreateTime = DateTime.Now;
-                            v.AsrTaskId = null; v.AsrTaskStatus = null; v.AsrRetryCount = 0;
-                            await douyinVideoService.UpdateOne(v);
+                            var srt = LocalAsrSubtitleService.BuildSrtContentFrom(text, segs);
+                            if (string.IsNullOrWhiteSpace(srt))
+                            {
+                                // M1:空文本(纯音乐/VAD全滤)不落空文件,标终态可手动重试
+                                v.SubtitleStatusMsg = "ASR returned empty content.";
+                                v.AsrTaskId = null; v.AsrTaskStatus = null;
+                                await douyinVideoService.UpdateSubtitleFieldsAsync(v);
+                                break;
+                            }
+                            var srtPath = Path.ChangeExtension(v.VideoSavePath, ".srt");
+                            var txtPath = Path.ChangeExtension(v.VideoSavePath, ".txt");
+                            try
+                            {
+                                await File.WriteAllTextAsync(srtPath, srt, System.Text.Encoding.UTF8);
+                                if (!string.IsNullOrWhiteSpace(text)) await File.WriteAllTextAsync(txtPath, text, System.Text.Encoding.UTF8);
+                                v.SubtitleSavePath = srtPath;
+                                v.SubtitleStatusMsg = "Subtitle generated via ASR queue.";
+                                v.SubtitleCreateTime = DateTime.Now;
+                                v.AsrTaskId = null; v.AsrTaskStatus = null; v.AsrRetryCount = 0;
+                                await douyinVideoService.UpdateSubtitleFieldsAsync(v);
+                            }
+                            catch (Exception)
+                            {
+                                // M2:写回失败计数,超限终态,不再无限重转
+                                v.AsrRetryCount += 1;
+                                v.AsrTaskId = null; v.AsrTaskStatus = null;
+                                if (v.AsrRetryCount >= 3) v.SubtitleStatusMsg = "字幕写回失败(重试超限)";
+                                await douyinVideoService.UpdateSubtitleFieldsAsync(v);
+                            }
                         }
-                        catch (Exception ex)
-                        {
-                            Serilog.Log.Debug(ex, "[subtitle-queue] 写回失败 {Id},下轮重试", v.Id);
-                            v.AsrTaskId = null;
-                            v.AsrTaskStatus = null;
-                            await douyinVideoService.UpdateOne(v);
-                        }
+                        finally { LocalAsrSubtitleService.ReleaseVideoGate(v.Id, gate); }
                         break;
                     case 3:
                         v.SubtitleStatusMsg = $"ASR: {err}";

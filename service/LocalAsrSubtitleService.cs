@@ -6,6 +6,7 @@ using System.Globalization;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Collections.Concurrent;
 
 namespace dy.net.service
 {
@@ -18,6 +19,22 @@ namespace dy.net.service
 
         private readonly DouyinVideoRepository _videoRepository;
         private readonly IHttpClientFactory _httpClientFactory;
+
+        /// <summary>按视频Id的进程内互斥:手动转写与队列Job并发处理同一视频时,后到者让路。</summary>
+        private static readonly ConcurrentDictionary<string, SemaphoreSlim> _videoGates = new();
+
+        /// <summary>尝试进入视频处理门(非阻塞)。返回null=有人在处理中。</summary>
+        public static SemaphoreSlim TryAcquireVideoGate(string videoId)
+        {
+            if (string.IsNullOrWhiteSpace(videoId)) return new SemaphoreSlim(1, 1); // 无Id不互斥(防御)
+            var gate = _videoGates.GetOrAdd(videoId, _ => new SemaphoreSlim(1, 1));
+            return gate.Wait(0) ? gate : null;
+        }
+
+        public static void ReleaseVideoGate(string videoId, SemaphoreSlim gate)
+        {
+            try { gate?.Release(); } catch (ObjectDisposedException) { }
+        }
 
         public LocalAsrSubtitleService(DouyinVideoRepository videoRepository, IHttpClientFactory httpClientFactory)
         {
@@ -208,68 +225,75 @@ namespace dy.net.service
                 return (false, "Video is required.", string.Empty);
             }
 
-            if (config == null)
-            {
-                await UpdateVideoSubtitleStateAsync(video, string.Empty, "Missing ASR config.");
-                return (false, "Missing ASR config.", string.Empty);
-            }
-
-            if (string.IsNullOrWhiteSpace(video.VideoSavePath) || !File.Exists(video.VideoSavePath))
-            {
-                await UpdateVideoSubtitleStateAsync(video, string.Empty, "Video file not found.");
-                return (false, "Video file not found.", string.Empty);
-            }
-
-            string subtitlePath = Path.ChangeExtension(video.VideoSavePath, ".srt");
-            string textPath = Path.ChangeExtension(video.VideoSavePath, ".txt");
-            bool overwrite = overwriteExisting ?? config.AsrOverwriteExisting;
-
-            if (!overwrite && File.Exists(subtitlePath))
-            {
-                await UpdateVideoSubtitleStateAsync(video, subtitlePath, "Subtitle already exists.");
-                return (true, "Subtitle already exists.", subtitlePath);
-            }
-
-            var healthResult = await EnsureAsrRunningAsync(config, cancellationToken);
-            if (!healthResult.Success)
-            {
-                await UpdateVideoSubtitleStateAsync(video, string.Empty, healthResult.Message);
-                return (false, healthResult.Message, string.Empty);
-            }
-
+            var gate = TryAcquireVideoGate(video.Id);
+            if (gate == null)
+                return (false, "该视频正在处理中(手动/队列另一路径),请稍后再试", string.Empty);
             try
             {
-                var transcribeResult = await TranscribeFileAsync(healthResult.ServiceUrl, video.VideoSavePath, config, cancellationToken, video.VideoTitle);
-                if (!transcribeResult.Success)
+                if (config == null)
                 {
-                    await UpdateVideoSubtitleStateAsync(video, string.Empty, transcribeResult.Message);
-                    return (false, transcribeResult.Message, string.Empty);
+                    await UpdateVideoSubtitleStateAsync(video, string.Empty, "Missing ASR config.");
+                    return (false, "Missing ASR config.", string.Empty);
                 }
 
-                var subtitleContent = BuildSrtContent(transcribeResult.Payload);
-                if (string.IsNullOrWhiteSpace(subtitleContent))
+                if (string.IsNullOrWhiteSpace(video.VideoSavePath) || !File.Exists(video.VideoSavePath))
                 {
-                    const string emptySubtitleMessage = "ASR finished but no subtitle content was returned.";
-                    await UpdateVideoSubtitleStateAsync(video, string.Empty, emptySubtitleMessage);
-                    return (false, emptySubtitleMessage, string.Empty);
+                    await UpdateVideoSubtitleStateAsync(video, string.Empty, "Video file not found.");
+                    return (false, "Video file not found.", string.Empty);
                 }
 
-                await File.WriteAllTextAsync(subtitlePath, subtitleContent, Encoding.UTF8, cancellationToken);
-                if (!string.IsNullOrWhiteSpace(transcribeResult.Payload.Text))
+                string subtitlePath = Path.ChangeExtension(video.VideoSavePath, ".srt");
+                string textPath = Path.ChangeExtension(video.VideoSavePath, ".txt");
+                bool overwrite = overwriteExisting ?? config.AsrOverwriteExisting;
+
+                if (!overwrite && File.Exists(subtitlePath))
                 {
-                    await File.WriteAllTextAsync(textPath, transcribeResult.Payload.Text, Encoding.UTF8, cancellationToken);
+                    await UpdateVideoSubtitleStateAsync(video, subtitlePath, "Subtitle already exists.");
+                    return (true, "Subtitle already exists.", subtitlePath);
                 }
 
-                await UpdateVideoSubtitleStateAsync(video, subtitlePath, "Subtitle generated via local ASR service.");
-                return (true, "Subtitle generated via local ASR service.", subtitlePath);
+                var healthResult = await EnsureAsrRunningAsync(config, cancellationToken);
+                if (!healthResult.Success)
+                {
+                    await UpdateVideoSubtitleStateAsync(video, string.Empty, healthResult.Message);
+                    return (false, healthResult.Message, string.Empty);
+                }
+
+                try
+                {
+                    var transcribeResult = await TranscribeFileAsync(healthResult.ServiceUrl, video.VideoSavePath, config, cancellationToken, video.VideoTitle);
+                    if (!transcribeResult.Success)
+                    {
+                        await UpdateVideoSubtitleStateAsync(video, string.Empty, transcribeResult.Message);
+                        return (false, transcribeResult.Message, string.Empty);
+                    }
+
+                    var subtitleContent = BuildSrtContent(transcribeResult.Payload);
+                    if (string.IsNullOrWhiteSpace(subtitleContent))
+                    {
+                        const string emptySubtitleMessage = "ASR finished but no subtitle content was returned.";
+                        await UpdateVideoSubtitleStateAsync(video, string.Empty, emptySubtitleMessage);
+                        return (false, emptySubtitleMessage, string.Empty);
+                    }
+
+                    await File.WriteAllTextAsync(subtitlePath, subtitleContent, Encoding.UTF8, cancellationToken);
+                    if (!string.IsNullOrWhiteSpace(transcribeResult.Payload.Text))
+                    {
+                        await File.WriteAllTextAsync(textPath, transcribeResult.Payload.Text, Encoding.UTF8, cancellationToken);
+                    }
+
+                    await UpdateVideoSubtitleStateAsync(video, subtitlePath, "Subtitle generated via local ASR service.");
+                    return (true, "Subtitle generated via local ASR service.", subtitlePath);
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "[ASR] Subtitle generation failed, VideoId={VideoId}, Path={VideoPath}", video.Id, video.VideoSavePath);
+                    var message = $"Subtitle generation failed: {ex.Message}";
+                    await UpdateVideoSubtitleStateAsync(video, string.Empty, message);
+                    return (false, message, string.Empty);
+                }
             }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "[ASR] Subtitle generation failed, VideoId={VideoId}, Path={VideoPath}", video.Id, video.VideoSavePath);
-                var message = $"Subtitle generation failed: {ex.Message}";
-                await UpdateVideoSubtitleStateAsync(video, string.Empty, message);
-                return (false, message, string.Empty);
-            }
+            finally { ReleaseVideoGate(video.Id, gate); }
         }
 
         private static (bool Success, string Message, string ServiceUrl) ValidateConfig(AppConfig config)

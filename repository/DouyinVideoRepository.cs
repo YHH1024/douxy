@@ -12,6 +12,14 @@ namespace dy.net.repository
         {
         }
 
+        /// <summary>只更新字幕/ASR相关6列(按Id),杜绝整实体stale覆盖其余字段。</summary>
+        public async Task<bool> UpdateSubtitleFieldsAsync(DouyinVideo video)
+        {
+            return await Db.Updateable(video)
+                .UpdateColumns(x => new { x.SubtitleSavePath, x.SubtitleStatusMsg, x.SubtitleCreateTime, x.AsrTaskId, x.AsrTaskStatus, x.AsrRetryCount })
+                .ExecuteCommandAsync() > 0;
+        }
+
 
 
 

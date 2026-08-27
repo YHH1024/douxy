@@ -103,6 +103,12 @@ namespace dy.net.service
             return await _dyCollectVideoRepository.UpdateAsync(video);
         }
 
+        /// <summary>只更新字幕/ASR相关6列(队列Job专用,防整实体覆盖)。</summary>
+        public async Task<bool> UpdateSubtitleFieldsAsync(DouyinVideo video)
+        {
+            return await _dyCollectVideoRepository.UpdateSubtitleFieldsAsync(video);
+        }
+
         public async Task<VideoStaticsDto> GetStatics()
         {
 
