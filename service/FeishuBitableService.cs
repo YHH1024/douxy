@@ -26,6 +26,9 @@ namespace dy.net.service
         private string _cachedToken;
         private DateTime _tokenExpireAt = DateTime.MinValue;
 
+        /// <summary>用户token刷新互斥:refresh_token一次性,并发刷新会互相作废(后到者清掉先到者的新token)。</summary>
+        private readonly SemaphoreSlim _tokenGate = new(1, 1);
+
         public FeishuBitableService(IHttpClientFactory httpClientFactory, DouyinCommonService commonService)
         {
             _httpClientFactory = httpClientFactory;
@@ -174,7 +177,8 @@ namespace dy.net.service
             await commonService.UpdateConfig(config);
         }
 
-        /// <summary>获取用户token:未过期直接用;过期用refresh刷新(新refresh立即落库,旧的一次性作废);refresh也过期抛明确错误。</summary>
+        /// <summary>获取用户token:未过期直接用;过期用refresh刷新。全程持锁+进锁重读config复查(double-check),
+        /// 防并发刷新互相作废;仅refresh确证失效才清库,清库前校验库里token仍是本请求所用的那个。</summary>
         private async Task<string> GetUserAccessTokenAsync(AppConfig config)
         {
             if (!string.IsNullOrEmpty(config.FeishuUserAccessToken) && config.FeishuUserTokenExpiresAt > DateTime.Now)
@@ -183,44 +187,79 @@ namespace dy.net.service
             if (!HasUserAuth(config))
                 throw new Exception("飞书用户授权已过期,请到设置页重新点击「授权飞书账号」");
 
-            var client = _httpClientFactory.CreateClient(FEISHU_HTTP_CLIENT);
-            var resp = await client.PostAsJsonAsync($"{FEISHU_HOST}/open-apis/authen/v2/oauth/token", new
+            await _tokenGate.WaitAsync();
+            try
             {
-                grant_type = "refresh_token",
-                client_id = config.FeishuAppId,
-                client_secret = config.FeishuAppSecret,
-                refresh_token = config.FeishuUserRefreshToken
-            });
-            var body = await resp.Content.ReadFromJsonAsync<FeishuOAuthTokenResp>();
-            if (body?.Code != 0 || string.IsNullOrEmpty(body.AccessToken))
-            {
-                // 失效的refresh清掉,让状态回到「未授权」而不是反复用死token重试
-                config.FeishuUserAccessToken = null;
-                config.FeishuUserRefreshToken = null;
-                config.FeishuUserTokenExpiresAt = null;
-                config.FeishuUserRefreshExpiresAt = null;
-                await commonService.UpdateConfig(config);
-                throw new Exception($"飞书用户授权已失效({body?.Error ?? body?.Code.ToString()}),请到设置页重新授权");
+                // double-check:等锁期间并发者可能已刷新完——重读config,新token未过期直接用
+                var latest = commonService.GetConfig();
+                if (latest != null && !string.IsNullOrEmpty(latest.FeishuUserAccessToken)
+                    && latest.FeishuUserTokenExpiresAt > DateTime.Now)
+                {
+                    CopyUserTokens(latest, config);
+                    return latest.FeishuUserAccessToken;
+                }
+                var refreshUsed = config.FeishuUserRefreshToken;
+
+                var client = _httpClientFactory.CreateClient(FEISHU_HTTP_CLIENT);
+                var resp = await client.PostAsJsonAsync($"{FEISHU_HOST}/open-apis/authen/v2/oauth/token", new
+                {
+                    grant_type = "refresh_token",
+                    client_id = config.FeishuAppId,
+                    client_secret = config.FeishuAppSecret,
+                    refresh_token = refreshUsed
+                });
+                var body = await resp.Content.ReadFromJsonAsync<FeishuOAuthTokenResp>();
+                if (body?.Code != 0 || string.IsNullOrEmpty(body.AccessToken))
+                {
+                    // 仅refresh确证失效才清库;清库前校验库里还是本请求所用的token——不等说明并发者已换新,不清(避免误杀对方成果)
+                    var codeOrError = body?.Error ?? body?.Code.ToString();
+                    var current = commonService.GetConfig();
+                    if (current != null && current.FeishuUserRefreshToken == refreshUsed)
+                    {
+                        current.FeishuUserAccessToken = null;
+                        current.FeishuUserRefreshToken = null;
+                        current.FeishuUserTokenExpiresAt = null;
+                        current.FeishuUserRefreshExpiresAt = null;
+                        await commonService.UpdateConfig(current);
+                        CopyUserTokens(current, config);
+                    }
+                    throw new Exception($"飞书用户授权已失效({codeOrError}),请到设置页重新授权");
+                }
+                await SaveUserTokensAsync(config, body);
+                return body.AccessToken;
             }
-            await SaveUserTokensAsync(config, body);
-            return body.AccessToken;
+            finally { _tokenGate.Release(); }
+        }
+
+        /// <summary>把最新token字段同步回调用方持有的config引用(免得调用方后续用旧值覆盖落库)。</summary>
+        private static void CopyUserTokens(AppConfig from, AppConfig to)
+        {
+            to.FeishuUserAccessToken = from.FeishuUserAccessToken;
+            to.FeishuUserRefreshToken = from.FeishuUserRefreshToken;
+            to.FeishuUserTokenExpiresAt = from.FeishuUserTokenExpiresAt;
+            to.FeishuUserRefreshExpiresAt = from.FeishuUserRefreshExpiresAt;
         }
 
         private async Task<string> GetTenantTokenAsync(AppConfig config)
         {
-            if (!string.IsNullOrEmpty(_cachedToken) && DateTime.Now < _tokenExpireAt)
-                return _cachedToken;
+            await _tokenGate.WaitAsync();
+            try
+            {
+                if (!string.IsNullOrEmpty(_cachedToken) && DateTime.Now < _tokenExpireAt)
+                    return _cachedToken;
 
-            var client = _httpClientFactory.CreateClient(FEISHU_HTTP_CLIENT);
-            var resp = await client.PostAsJsonAsync($"{FEISHU_HOST}/open-apis/auth/v3/tenant_access_token/internal",
-                new { app_id = config.FeishuAppId, app_secret = config.FeishuAppSecret });
-            // 该接口是扁平响应(token在顶层无data包裹),不能用通用信封解析
-            var body = await resp.Content.ReadFromJsonAsync<FeishuTokenResp>();
-            if (body?.Code != 0 || string.IsNullOrEmpty(body?.Token))
-                throw new Exception($"飞书token获取失败: code={body?.Code} msg={body?.Msg}");
-            _cachedToken = body.Token;
-            _tokenExpireAt = DateTime.Now.AddSeconds(body.Expire - 300);
-            return _cachedToken;
+                var client = _httpClientFactory.CreateClient(FEISHU_HTTP_CLIENT);
+                var resp = await client.PostAsJsonAsync($"{FEISHU_HOST}/open-apis/auth/v3/tenant_access_token/internal",
+                    new { app_id = config.FeishuAppId, app_secret = config.FeishuAppSecret });
+                // 该接口是扁平响应(token在顶层无data包裹),不能用通用信封解析
+                var body = await resp.Content.ReadFromJsonAsync<FeishuTokenResp>();
+                if (body?.Code != 0 || string.IsNullOrEmpty(body?.Token))
+                    throw new Exception($"飞书token获取失败: code={body?.Code} msg={body?.Msg}");
+                _cachedToken = body.Token;
+                _tokenExpireAt = DateTime.Now.AddSeconds(body.Expire - 300);
+                return _cachedToken;
+            }
+            finally { _tokenGate.Release(); }
         }
 
         /// <summary>带鉴权客户端:用户身份优先(文件建在用户文件夹),无用户授权回落应用身份(现有行为)。</summary>
