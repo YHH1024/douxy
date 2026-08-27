@@ -141,7 +141,7 @@ namespace dy.net.job
             }
             var toSubmit = all.Where(v => string.IsNullOrWhiteSpace(v.SubtitleSavePath)
                 && (string.IsNullOrWhiteSpace(v.SubtitleStatusMsg)
-                    || (v.SubtitleStatusMsg == "Video file not found." && !string.IsNullOrWhiteSpace(v.VideoSavePath) && File.Exists(v.VideoSavePath)))
+                    || ((v.SubtitleStatusMsg == "Video file not found." || v.SubtitleStatusMsg == "no video file") && !string.IsNullOrWhiteSpace(v.VideoSavePath) && File.Exists(v.VideoSavePath)))
                 && !v.AsrTaskId.HasValue
                 && v.SyncTime >= cutoff
                 && !string.IsNullOrWhiteSpace(v.VideoSavePath))
@@ -154,7 +154,7 @@ namespace dy.net.job
                     await douyinVideoService.UpdateOne(v);
                     continue;
                 }
-                if (v.SubtitleStatusMsg == "Video file not found.")
+                if (v.SubtitleStatusMsg == "Video file not found." || v.SubtitleStatusMsg == "no video file")
                 {
                     v.SubtitleStatusMsg = null; // 文件已恢复,清失败标记重新入队(字幕补漏)
                     await douyinVideoService.UpdateSubtitleFieldsAsync(v);
