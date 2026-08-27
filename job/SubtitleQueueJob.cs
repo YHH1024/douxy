@@ -25,6 +25,19 @@ namespace dy.net.job
 
         public async Task Execute(IJobExecutionContext context)
         {
+            // 外层兜底:DB等异常只记日志,不中断Job调度
+            try
+            {
+                await ExecuteInner(context);
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Error(ex, "[subtitle-queue] 轮询异常,本轮放弃,下轮重试");
+            }
+        }
+
+        private async Task ExecuteInner(IJobExecutionContext context)
+        {
             var config = commonService.GetConfig();
             if (config == null || !config.AutoGenSubtitle) return;
 
@@ -90,10 +103,12 @@ namespace dy.net.job
                         }
                         finally { LocalAsrSubtitleService.ReleaseVideoGate(v.Id, gate); }
                         break;
-                    case 3:
-                        v.SubtitleStatusMsg = $"ASR: {err}";
+                    case 3: // ASR侧失败:瞬时故障(显存临时不足等)有限重试,超限才终态
+                        v.AsrRetryCount += 1;
                         v.AsrTaskId = null; v.AsrTaskStatus = null;
-                        await douyinVideoService.UpdateOne(v);
+                        if (v.AsrRetryCount >= 3)
+                            v.SubtitleStatusMsg = $"ASR: {err}(重试超限)";
+                        await douyinVideoService.UpdateSubtitleFieldsAsync(v);
                         break;
                     case -1: // 404 任务丢失
                         v.AsrRetryCount++;
@@ -114,7 +129,8 @@ namespace dy.net.job
             var backfillHours = config.AsrBackfillHours <= 0 ? 24 : config.AsrBackfillHours; // 0视为只转当天(24h)
             var cutoff = DateTime.Now.AddHours(-backfillHours);
             var toSubmit = all.Where(v => string.IsNullOrWhiteSpace(v.SubtitleSavePath)
-                && string.IsNullOrWhiteSpace(v.SubtitleStatusMsg)
+                && (string.IsNullOrWhiteSpace(v.SubtitleStatusMsg)
+                    || (v.SubtitleStatusMsg == "Video file not found." && !string.IsNullOrWhiteSpace(v.VideoSavePath) && File.Exists(v.VideoSavePath)))
                 && !v.AsrTaskId.HasValue
                 && v.SyncTime >= cutoff
                 && !string.IsNullOrWhiteSpace(v.VideoSavePath))
@@ -126,6 +142,11 @@ namespace dy.net.job
                     v.SubtitleStatusMsg = "Video file not found.";
                     await douyinVideoService.UpdateOne(v);
                     continue;
+                }
+                if (v.SubtitleStatusMsg == "Video file not found.")
+                {
+                    v.SubtitleStatusMsg = null; // 文件已恢复,清失败标记重新入队(字幕补漏)
+                    await douyinVideoService.UpdateSubtitleFieldsAsync(v);
                 }
                 var (ok, taskId, dedup, err) = await asrService.QueueSubmitAsync(
                     config, v.VideoSavePath, v.VideoTitle, $"dysync-{v.Id}");
