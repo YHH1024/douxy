@@ -327,8 +327,8 @@ namespace dy.net.service
             }
 
             var payload = string.IsNullOrWhiteSpace(folderToken)
-                ? new { name = $"抖小云同步数据-{DateTime.Now:yyyy年M月}" }
-                : (object)new { name = $"抖小云同步数据-{DateTime.Now:yyyy年M月}", folder_token = folderToken };
+                ? new { name = $"抖小云同步数据-{pushDate:yyyy年M月}" }
+                : (object)new { name = $"抖小云同步数据-{pushDate:yyyy年M月}", folder_token = folderToken };
             var resp = await client.PostAsJsonAsync($"{FEISHU_HOST}/open-apis/bitable/v1/apps", payload);
             var body = await resp.Content.ReadFromJsonAsync<FeishuResp<FeishuAppData>>();
             if (body?.Code != 0 || string.IsNullOrEmpty(body.Data?.App?.AppToken))
