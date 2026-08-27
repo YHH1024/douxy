@@ -214,7 +214,10 @@ namespace dy.net.service
                     // 仅refresh确证失效才清库;清库前校验库里还是本请求所用的token——不等说明并发者已换新,不清(避免误杀对方成果)
                     var codeOrError = body?.Error ?? body?.Code.ToString();
                     var current = commonService.GetConfig();
-                    if (current != null && current.FeishuUserRefreshToken == refreshUsed)
+                    // 仅refresh确证失效(invalid_grant/20029/token失效码)才清库;限频99991400等瞬时错误不清,直接抛出让用户重试
+                    var errIdentifier = (body?.Error ?? string.Empty) + " " + (body?.Code.ToString() ?? "");
+                    bool refreshReallyDead = errIdentifier.Contains("invalid_grant") || errIdentifier.Contains("20029") || body?.Code == 99991663 || body?.Code == 99991661;
+                    if (refreshReallyDead && current != null && current.FeishuUserRefreshToken == refreshUsed)
                     {
                         current.FeishuUserAccessToken = null;
                         current.FeishuUserRefreshToken = null;
@@ -301,7 +304,7 @@ namespace dy.net.service
                 catch (Exception ex)
                 {
                     // 网络异常≠Base被删:误重建会产生重复Base(8/25事故同类)。宁可不推,下次推送重试。
-                    throw new Exception($"缓存Base探测网络异常,本次推送终止: {ex.Message}");
+                    throw new Exception($"缓存Base探测网络异常,本次推送终止: {ex.Message}", ex);
                 }
             }
 

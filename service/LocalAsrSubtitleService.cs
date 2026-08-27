@@ -26,7 +26,7 @@ namespace dy.net.service
         /// <summary>尝试进入视频处理门(非阻塞)。返回null=有人在处理中。</summary>
         public static SemaphoreSlim TryAcquireVideoGate(string videoId)
         {
-            if (string.IsNullOrWhiteSpace(videoId)) return new SemaphoreSlim(1, 1); // 无Id不互斥(防御)
+            if (string.IsNullOrWhiteSpace(videoId)) { var g = new SemaphoreSlim(1, 1); g.Wait(); return g; } // 无Id不互斥(防御):返回已占用的信号量,Release不抛SemaphoreFullException
             var gate = _videoGates.GetOrAdd(videoId, _ => new SemaphoreSlim(1, 1));
             return gate.Wait(0) ? gate : null;
         }

@@ -62,7 +62,7 @@ namespace dy.net.job
                 {
                     case 0:
                     case 1:
-                        if (v.AsrTaskStatus != status) { v.AsrTaskStatus = status; await douyinVideoService.UpdateOne(v); }
+                        if (v.AsrTaskStatus != status) { v.AsrTaskStatus = status; await douyinVideoService.UpdateSubtitleFieldsAsync(v); }
                         break;
                     case 2: // 成功:写回(手动先完成则让位)
                         if (!string.IsNullOrWhiteSpace(v.SubtitleSavePath)) { v.AsrTaskId = null; v.AsrTaskStatus = null; await douyinVideoService.UpdateSubtitleFieldsAsync(v); break; }
@@ -92,8 +92,9 @@ namespace dy.net.job
                                 v.AsrTaskId = null; v.AsrTaskStatus = null; v.AsrRetryCount = 0;
                                 await douyinVideoService.UpdateSubtitleFieldsAsync(v);
                             }
-                            catch (Exception)
+                            catch (Exception ex)
                             {
+                                Serilog.Log.Debug(ex, "[subtitle-queue] 写回失败 {Id}", v.Id);
                                 // M2:写回失败计数,超限终态,不再无限重转
                                 v.AsrRetryCount += 1;
                                 v.AsrTaskId = null; v.AsrTaskStatus = null;
@@ -118,7 +119,7 @@ namespace dy.net.job
                             v.AsrTaskId = null; v.AsrTaskStatus = null;
                         }
                         else { v.AsrTaskId = null; v.AsrTaskStatus = null; } // 下轮重新提交
-                        await douyinVideoService.UpdateOne(v);
+                        await douyinVideoService.UpdateSubtitleFieldsAsync(v);
                         break;
                     default: // -2 查询异常:不动,下轮再查
                         break;
@@ -151,7 +152,7 @@ namespace dy.net.job
                 if (!File.Exists(v.VideoSavePath))
                 {
                     v.SubtitleStatusMsg = "Video file not found.";
-                    await douyinVideoService.UpdateOne(v);
+                    await douyinVideoService.UpdateSubtitleFieldsAsync(v);
                     continue;
                 }
                 if (v.SubtitleStatusMsg == "Video file not found." || v.SubtitleStatusMsg == "no video file")
@@ -165,7 +166,7 @@ namespace dy.net.job
                 {
                     v.AsrTaskId = taskId;
                     v.AsrTaskStatus = 0;
-                    await douyinVideoService.UpdateOne(v);
+                    await douyinVideoService.UpdateSubtitleFieldsAsync(v);
                 }
                 else
                 {
