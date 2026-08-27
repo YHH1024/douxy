@@ -128,6 +128,17 @@ namespace dy.net.job
             // ---- ② 提交新的(可配回扫窗口 AsrBackfillHours,默认48h;调大可转历史视频。限100/轮) ----
             var backfillHours = config.AsrBackfillHours <= 0 ? 24 : config.AsrBackfillHours; // 0视为只转当天(24h)
             var cutoff = DateTime.Now.AddHours(-backfillHours);
+            // M3:无文件路径的今日记录标终态——否则飞书字幕等待永远等不到它,每晚硬等满5h保险丝
+            var todayStart = DateTime.Today;
+            var noFile = all.Where(v => v.SyncTime >= todayStart
+                && string.IsNullOrWhiteSpace(v.VideoSavePath)
+                && string.IsNullOrWhiteSpace(v.SubtitleSavePath)
+                && string.IsNullOrWhiteSpace(v.SubtitleStatusMsg)).ToList();
+            foreach (var v in noFile)
+            {
+                v.SubtitleStatusMsg = "no video file";
+                await douyinVideoService.UpdateSubtitleFieldsAsync(v);
+            }
             var toSubmit = all.Where(v => string.IsNullOrWhiteSpace(v.SubtitleSavePath)
                 && (string.IsNullOrWhiteSpace(v.SubtitleStatusMsg)
                     || (v.SubtitleStatusMsg == "Video file not found." && !string.IsNullOrWhiteSpace(v.VideoSavePath) && File.Exists(v.VideoSavePath)))

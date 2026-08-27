@@ -41,8 +41,6 @@ namespace dy.net.job
             var targets = (await douyinVideoService.GetAllAsync())
                 .Where(v => v.ViedoType == VideoTypeEnum.dy_follows && v.CreateTime >= cutoff)
                 .ToList();
-            System.IO.File.AppendAllText("/tmp/backfill-diag.txt",
-                $"{DateTime.Now:HH:mm:ss} targets={targets.Count}\n");
             if (!targets.Any())
             {
                 Serilog.Log.Debug("[stats-backfill] 无发布≤3天的关注视频,跳过");
@@ -63,8 +61,6 @@ namespace dy.net.job
             foreach (var authorGroup in targets.GroupBy(v => v.AuthorId))
             {
                 var followed = await douyinFollowService.GetByUperId(authorGroup.Key, cookie.MyUserId);
-                System.IO.File.AppendAllText("/tmp/backfill-diag.txt",
-                    $"{DateTime.Now:HH:mm:ss} author={authorGroup.Key} followed={(followed != null)} changed={changed.Count}\n");
                 if (followed == null || string.IsNullOrWhiteSpace(followed.SecUid))
                 {
                     Serilog.Log.Debug("[stats-backfill] 博主 {Author} 不在关注表或无SecUid,跳过", authorGroup.Key);
