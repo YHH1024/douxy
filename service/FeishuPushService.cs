@@ -45,6 +45,7 @@ namespace dy.net.service
                 return new FeishuPushResult { Success = false, Message = "已有推送任务进行中,稍后再试" };
             try
             {
+                var pushDate = DateTime.Today; // 跨午夜保护:等待最长到04:50,期间Today会变新一天——筛选/表名/Base月份全用入口快照
                 // 字幕等待(仅定时任务):今日存在字幕在转/待转的视频时推迟推送,直到全部终态或超保险丝。
                 // 失败(StatusMsg有值)是终态不阻塞;手动推送 waitForSubtitles=false 跳过整段。
                 if (waitForSubtitles)
@@ -55,7 +56,7 @@ namespace dy.net.service
                     while (DateTime.Now < deadline)
                     {
                         var pendingCheck = (await douyinVideoService.GetAllAsync())
-                            .Where(v => v.SyncTime >= DateTime.Today);
+                            .Where(v => v.SyncTime >= pushDate);
                         if (!pendingCheck.Any(v => string.IsNullOrWhiteSpace(v.SubtitleSavePath)
                                                  && string.IsNullOrWhiteSpace(v.SubtitleStatusMsg)))
                             break; // 全部终态,正常推送
@@ -86,7 +87,7 @@ namespace dy.net.service
             {
                 var lanBase = config.LanBaseUrl; // 内网播放链接基数(空=不写内网列)
                 var all = await douyinVideoService.GetAllAsync();
-                var today = all.Where(v => v.SyncTime >= DateTime.Today).OrderBy(v => v.SyncTime).ToList();
+                var today = all.Where(v => v.SyncTime >= pushDate).OrderBy(v => v.SyncTime).ToList();
                 var rows = new List<FeishuVideoRow>();
                 foreach (var v in today)
                 {
@@ -116,7 +117,7 @@ namespace dy.net.service
                             : $"{lanBase.TrimEnd('/')}/api/video/play/{v.Id}",
                     });
                 }
-                result = await bitableService.PushDailyAsync(config, rows);
+                result = await bitableService.PushDailyAsync(config, rows, pushDate);
                 Log.Information("[feishu] 推送完成 {Count} 条", result.Count);
             }
             catch (Exception ex)

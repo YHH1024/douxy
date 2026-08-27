@@ -36,10 +36,10 @@ namespace dy.net.service
         }
 
         /// <summary>推送入口:定位/创建本月Base → 定位/清空今日表 → 批量写入。返回含BaseUrl的结果。</summary>
-        public async Task<FeishuPushResult> PushDailyAsync(AppConfig config, List<FeishuVideoRow> rows)
+        public async Task<FeishuPushResult> PushDailyAsync(AppConfig config, List<FeishuVideoRow> rows, DateTime pushDate)
         {
-            var baseToken = await EnsureMonthlyBaseAsync(config);
-            var tableName = $"{DateTime.Now.Month}月{DateTime.Now.Day}日";
+            var baseToken = await EnsureMonthlyBaseAsync(config, pushDate);
+            var tableName = $"{pushDate.Month}月{pushDate.Day}日";
             var tableId = await EnsureDailyTableAsync(config, baseToken, tableName);
             await ClearTableAsync(config, baseToken, tableId);
             await BatchCreateAsync(config, baseToken, tableId, rows);
@@ -283,9 +283,9 @@ namespace dy.net.service
         // ==================== Base ====================
 
         /// <summary>定位本月Base:缓存命中直接用(先验可达,Base被删则自动重建),否则新建+写缓存。月份变了自动滚动。</summary>
-        private async Task<string> EnsureMonthlyBaseAsync(AppConfig config)
+        private async Task<string> EnsureMonthlyBaseAsync(AppConfig config, DateTime pushDate)
         {
-            var month = $"{DateTime.Now:yyyy-M}";
+            var month = $"{pushDate:yyyy-M}";
             if (config.FeishuBaseMonthCache == month && !string.IsNullOrWhiteSpace(config.FeishuBaseTokenCache))
             {
                 // 缓存可达性验证:Base被手动删除后token失效,直接用会在后续写入才炸——提前探一次,失效就走重建
