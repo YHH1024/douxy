@@ -300,7 +300,8 @@ namespace dy.net.service
                 }
                 catch (Exception ex)
                 {
-                    Log.Warning(ex, "[feishu] 缓存Base探测异常,将重建");
+                    // 网络异常≠Base被删:误重建会产生重复Base(8/25事故同类)。宁可不推,下次推送重试。
+                    throw new Exception($"缓存Base探测网络异常,本次推送终止: {ex.Message}");
                 }
             }
 
