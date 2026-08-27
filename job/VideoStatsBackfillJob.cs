@@ -99,7 +99,9 @@ namespace dy.net.job
                             continue; // 无变化
                         video.PlayCount = p; video.DiggCount = d; video.CommentCount = c;
                         video.ShareCount = s; video.CollectCount = col;
-                        await douyinVideoService.UpdateOne(video);
+                        // B2:只更新统计5列——本Job从05:30加载实体到收尾可>1h,整实体更新会把
+                        // 期间字幕队列写入的字幕列stale覆盖回null,触发无谓重转
+                        await douyinVideoService.UpdateStatsFieldsAsync(video);
                         changed.Add(video);
                     }
                 }

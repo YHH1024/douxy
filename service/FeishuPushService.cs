@@ -45,10 +45,11 @@ namespace dy.net.service
                 return new FeishuPushResult { Success = false, Message = "已有推送任务进行中,稍后再试" };
             try
             {
-                var pushDate = DateTime.Today; // 跨午夜保护:等待最长到04:50,期间Today会变新一天——筛选/表名/Base月份全用入口快照
+                var pushDate = DateTime.Today; // 跨午夜保护:等待最长到04:50,期间Today会变新一天——筛选/表名/Base月份/通知日期全用入口快照
                 // 字幕等待(仅定时任务):今日存在字幕在转/待转的视频时推迟推送,直到全部终态或超保险丝。
                 // 失败(StatusMsg有值)是终态不阻塞;手动推送 waitForSubtitles=false 跳过整段。
-                if (waitForSubtitles)
+                // B3:未开自动字幕时队列不会转写任何视频,三空记录永远非终态——跳过等待,否则每晚硬等满5h保险丝
+                if (waitForSubtitles && config.AutoGenSubtitle)
                 {
                     var deadline = DateTime.Now.AddHours(5); // 保险丝:最多等5小时(23:50→04:50),防ASR彻底故障时当天永不推送
                     int consecutiveAsrFail = 0;
@@ -126,7 +127,7 @@ namespace dy.net.service
                 result = new FeishuPushResult { Success = false, Message = ex.Message };
             }
 
-            var stamp = $"{DateTime.Now.Month}月{DateTime.Now.Day}日";
+            var stamp = $"{pushDate.Month}月{pushDate.Day}日"; // 用入口快照:跨午夜推送(04:50)时数据是昨天的,Now会把通知日期标错一天
             var text = result.Success
                 ? $"{stamp}抖小云同步数据已推送 {result.Count} 条 → {result.BaseUrl}"
                 : $"{stamp}抖小云推送失败:{result.Message}";
@@ -136,7 +137,8 @@ namespace dy.net.service
             {
                 config.FeishuLastPushResult = $"{DateTime.Now:yyyy-MM-dd HH:mm} " +
                     (result.Success ? $"成功 {result.Count}条" : $"失败 {result.Message}");
-                await commonService.UpdateConfig(config);
+                // 列级更新:config是入口快照,等待字幕最长5h,整实体落库会把期间用户在设置页的改动静默回滚
+                await commonService.UpdateConfigColumnsAsync(config, nameof(config.FeishuLastPushResult));
             }
             catch (Exception ex)
             {

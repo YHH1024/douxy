@@ -22,12 +22,13 @@ namespace dy.net.service
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly DouyinCommonService commonService;
 
-        // tenant_access_token 缓存(2h TTL,提前5min刷新)
-        private string _cachedToken;
-        private DateTime _tokenExpireAt = DateTime.MinValue;
+        // tenant_access_token 缓存(2h TTL,提前5min刷新)。
+        // ⚠️必须static:本服务经自动扫描注册为Transient,实例字段每个请求各一份——锁不互斥、缓存不共享
+        private static string _cachedToken;
+        private static DateTime _tokenExpireAt = DateTime.MinValue;
 
-        /// <summary>用户token刷新互斥:refresh_token一次性,并发刷新会互相作废(后到者清掉先到者的新token)。</summary>
-        private readonly SemaphoreSlim _tokenGate = new(1, 1);
+        /// <summary>用户token刷新互斥:refresh_token一次性,并发刷新会互相作废(后到者清掉先到者的新token)。必须static(见上)。</summary>
+        private static readonly SemaphoreSlim _tokenGate = new(1, 1);
 
         public FeishuBitableService(IHttpClientFactory httpClientFactory, DouyinCommonService commonService)
         {
@@ -157,14 +158,12 @@ namespace dy.net.service
             var body = await resp.Content.ReadFromJsonAsync<FeishuOAuthTokenResp>();
             if (body?.Code != 0 || string.IsNullOrEmpty(body.AccessToken))
                 throw new Exception($"飞书授权码换token失败: code={body?.Code} {body?.Error} {body?.ErrorDescription}");
-            await SaveUserTokensAsync(config, body);
-            // 2026-08-25 修复:同账号重新授权不再清Base缓存(曾导致文件夹里出现两个同名Base,旧Base成孤儿)。
-            // Base归属跟随授权用户,重授权同一账号时沿用即可;EnsureMonthlyBaseAsync访问失败时仍会重建兜底。
-            await commonService.UpdateConfig(config);
+            // SaveUserTokensAsync 已列级落库 token;此处原本的整实体 UpdateConfig 是冗余二次写,删掉
+            // 2026-08-25 备忘:同账号重新授权不清Base缓存(曾致文件夹出现两个同名Base);EnsureMonthlyBaseAsync 访问失败仍会重建兜底。
             return body.AccessToken;
         }
 
-        /// <summary>落库 token 与过期时刻。</summary>
+        /// <summary>落库 token 与过期时刻(列级——避免整实体快照覆盖用户设置)。</summary>
         private async Task SaveUserTokensAsync(AppConfig config, FeishuOAuthTokenResp body)
         {
             config.FeishuUserAccessToken = body.AccessToken;
@@ -174,7 +173,9 @@ namespace dy.net.service
                 config.FeishuUserRefreshToken = body.RefreshToken;
                 config.FeishuUserRefreshExpiresAt = DateTime.Now.AddSeconds(body.RefreshExpiresIn ?? 604800);
             }
-            await commonService.UpdateConfig(config);
+            await commonService.UpdateConfigColumnsAsync(config,
+                nameof(config.FeishuUserAccessToken), nameof(config.FeishuUserTokenExpiresAt),
+                nameof(config.FeishuUserRefreshToken), nameof(config.FeishuUserRefreshExpiresAt));
         }
 
         /// <summary>获取用户token:未过期直接用;过期用refresh刷新。全程持锁+进锁重读config复查(double-check),
@@ -223,7 +224,9 @@ namespace dy.net.service
                         current.FeishuUserRefreshToken = null;
                         current.FeishuUserTokenExpiresAt = null;
                         current.FeishuUserRefreshExpiresAt = null;
-                        await commonService.UpdateConfig(current);
+                        await commonService.UpdateConfigColumnsAsync(current,
+                            nameof(current.FeishuUserAccessToken), nameof(current.FeishuUserTokenExpiresAt),
+                            nameof(current.FeishuUserRefreshToken), nameof(current.FeishuUserRefreshExpiresAt));
                         CopyUserTokens(current, config);
                     }
                     throw new Exception($"飞书用户授权已失效({codeOrError}),请到设置页重新授权");
@@ -380,7 +383,8 @@ namespace dy.net.service
 
             config.FeishuBaseTokenCache = appToken;
             config.FeishuBaseMonthCache = month;
-            await commonService.UpdateConfig(config);
+            await commonService.UpdateConfigColumnsAsync(config,
+                nameof(config.FeishuBaseTokenCache), nameof(config.FeishuBaseMonthCache));
             return appToken;
         }
 
@@ -397,7 +401,7 @@ namespace dy.net.service
                 throw new Exception($"飞书创建文件夹失败: code={body?.Code} msg={body?.Msg}");
             Log.Information("[feishu] 新建专属文件夹 {Token}", body.Data.Token);
             config.FeishuAutoFolderToken = body.Data.Token;
-            await commonService.UpdateConfig(config);
+            await commonService.UpdateConfigColumnsAsync(config, nameof(config.FeishuAutoFolderToken));
             return body.Data.Token;
         }
 

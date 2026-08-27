@@ -20,6 +20,15 @@ namespace dy.net.repository
                 .ExecuteCommandAsync() > 0;
         }
 
+        /// <summary>只更新统计相关5列(按Id)。统计回填Job拉取全程可>1h,期间字幕队列会写字幕列——
+        /// 整实体更新会把字幕列stale覆盖回null触发重转。</summary>
+        public async Task<bool> UpdateStatsFieldsAsync(DouyinVideo video)
+        {
+            return await Db.Updateable(video)
+                .UpdateColumns(x => new { x.PlayCount, x.DiggCount, x.CommentCount, x.ShareCount, x.CollectCount })
+                .ExecuteCommandAsync() > 0;
+        }
+
 
 
 

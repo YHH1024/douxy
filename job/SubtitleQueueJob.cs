@@ -129,9 +129,11 @@ namespace dy.net.job
             // ---- ② 提交新的(可配回扫窗口 AsrBackfillHours,默认48h;调大可转历史视频。限100/轮) ----
             var backfillHours = config.AsrBackfillHours <= 0 ? 24 : config.AsrBackfillHours; // 0视为只转当天(24h)
             var cutoff = DateTime.Now.AddHours(-backfillHours);
-            // M3:无文件路径的今日记录标终态——否则飞书字幕等待永远等不到它,每晚硬等满5h保险丝
-            var todayStart = DateTime.Today;
-            var noFile = all.Where(v => v.SyncTime >= todayStart
+            // M3:无文件路径的当日记录标终态——否则飞书字幕等待永远等不到它,每晚硬等满5h保险丝。
+            // B4:窗口含昨天——最后一轮标记跑在22:00,22:00后~午夜前入库的无文件记录次日已不是"今日",
+            // 若不含昨天会永远漏标(如23:58同步的图文),当晚推送为其硬等5h
+            var markSince = DateTime.Today.AddDays(-1);
+            var noFile = all.Where(v => v.SyncTime >= markSince
                 && string.IsNullOrWhiteSpace(v.VideoSavePath)
                 && string.IsNullOrWhiteSpace(v.SubtitleSavePath)
                 && string.IsNullOrWhiteSpace(v.SubtitleStatusMsg)).ToList();

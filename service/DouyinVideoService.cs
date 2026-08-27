@@ -109,6 +109,12 @@ namespace dy.net.service
             return await _dyCollectVideoRepository.UpdateSubtitleFieldsAsync(video);
         }
 
+        /// <summary>只更新统计5列(统计回填Job专用,防字幕列被旧快照覆盖)。</summary>
+        public async Task<bool> UpdateStatsFieldsAsync(DouyinVideo video)
+        {
+            return await _dyCollectVideoRepository.UpdateStatsFieldsAsync(video);
+        }
+
         public async Task<VideoStaticsDto> GetStatics()
         {
 

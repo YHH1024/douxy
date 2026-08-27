@@ -119,6 +119,17 @@ namespace dy.net.service
 
         }
 
+        /// <summary>只更新指定列(按Id),其余列不动。飞书推送链路专用:
+        /// 推送持有config快照最长可达5h(等字幕),期间用户在设置页的改动会被整实体落库静默回滚——
+        /// token/缓存/结果等回写一律走本方法列级更新。</summary>
+        public async Task<bool> UpdateConfigColumnsAsync(AppConfig config, params string[] columns)
+        {
+            if (columns == null || columns.Length == 0) return false;
+            return await sqlSugarClient.Updateable(config)
+                .UpdateColumns(columns)
+                .ExecuteCommandAsync() > 0;
+        }
+
         /// <summary>
         /// 重置所有Cookie的同步状态为0
         /// </summary>
