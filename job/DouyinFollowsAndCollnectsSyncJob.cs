@@ -207,7 +207,8 @@ namespace dy.net.job
 
                     if (data == null)
                     {
-                        Log.Error($"[{cookie.UserName}] - {LOG_TAG_FOLLOW}同步异常，请检查cookie");
+                        // 走到这里只剩"响应为空/解析失败/Cookie失效"(网络异常已在底层抛DouyinNetworkException)
+                        Log.Error($"[{cookie.UserName}] - {LOG_TAG_FOLLOW}响应为空或解析失败(可能Cookie已失效)，请检查cookie");
                       break;
                     }
                     else
@@ -242,6 +243,11 @@ namespace dy.net.job
                     Log.Debug($"[{cookie.UserName}][{LOG_TAG_FOLLOW}]同步完成 新增:{add} 更新:{update} 成功:{succ} 总关注数:{total}，这是同步关注列表，这不是同步视频！！！");
                 }
                 await _douyinCommonService.SetConfigNotFirstRunning();
+            }
+            catch (DouyinNetworkException ex)
+            {
+                // 网络抖动(如SSL握手被掐)是瞬时故障,下轮cron自愈——不动Cookie状态,不误导用户去重新登录
+                Log.Warning(ex, $"[{cookie.UserName}][{LOG_TAG_FOLLOW}]：网络异常跳过本轮(非Cookie问题),下轮自动重试");
             }
             catch (Exception ex)
             {

@@ -8,3 +8,6 @@ data1
 /appsettings.json
 /Properties/PublishProfiles/fn.pubxml.user
 /Properties/PublishProfiles/*.user
+build-context/
+build-context/
+publish-local/

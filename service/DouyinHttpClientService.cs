@@ -65,7 +65,19 @@ namespace dy.net.service
 
             // 优化：移除using，由IHttpClientFactory管理生命周期
             var httpClient = _clientFactory.CreateClient(DouyinRequestParamManager.DY_HTTP_CLIENT);
-            return await httpClient.SendAsync(requestMessage);
+            try
+            {
+                return await httpClient.SendAsync(requestMessage);
+            }
+            // 网络层失败单独分型:瞬时抖动(如SSL握手被掐)下轮自愈,调用方不该当成Cookie失效处理
+            catch (HttpRequestException ex)
+            {
+                throw new DouyinNetworkException($"抖音接口网络失败: {ex.Message}", ex);
+            }
+            catch (TaskCanceledException ex) // HttpClient 超时表现为 TaskCanceled
+            {
+                throw new DouyinNetworkException($"抖音接口请求超时", ex);
+            }
         }
 
         #region 收藏夹相关方法（保留原有逻辑，仅优化资源释放）
@@ -105,6 +117,7 @@ namespace dy.net.service
                     return null;
                 }
             }
+            catch (DouyinNetworkException) { throw; } // 网络异常透传,调用方可分型(勿当Cookie/无数据处理)
             catch (Exception ex)
             {
                 Log.Error($"SyncCollectVideos error: {ex.Message}", ex);
@@ -146,6 +159,7 @@ namespace dy.net.service
                     return null;
                 }
             }
+            catch (DouyinNetworkException) { throw; } // 网络异常透传,调用方可分型(勿当Cookie/无数据处理)
             catch (Exception ex)
             {
                 Log.Error("SyncCollectFolderList ,{error}", ex);
@@ -191,6 +205,7 @@ namespace dy.net.service
                     return null;
                 }
             }
+            catch (DouyinNetworkException) { throw; } // 网络异常透传,调用方可分型(勿当Cookie/无数据处理)
             catch (Exception ex)
             {
                 Log.Error($"SyncCollectVideosByCollectId error: {ex.Message}", ex);
@@ -234,6 +249,7 @@ namespace dy.net.service
                     return null;
                 }
             }
+            catch (DouyinNetworkException) { throw; } // 网络异常透传,调用方可分型(勿当Cookie/无数据处理)
             catch (Exception ex)
             {
                 Log.Error("SyncMixList ,{error}", ex);
@@ -279,6 +295,7 @@ namespace dy.net.service
                     return null;
                 }
             }
+            catch (DouyinNetworkException) { throw; } // 网络异常透传,调用方可分型(勿当Cookie/无数据处理)
             catch (Exception ex)
             {
                 Log.Error($"SyncMixViedosByMixId error: {ex.Message}", ex);
@@ -322,6 +339,7 @@ namespace dy.net.service
                     return null;
                 }
             }
+            catch (DouyinNetworkException) { throw; } // 网络异常透传,调用方可分型(勿当Cookie/无数据处理)
             catch (Exception ex)
             {
                 Log.Error("SyncShortList ,{error}", ex);
@@ -367,6 +385,7 @@ namespace dy.net.service
                     return null;
                 }
             }
+            catch (DouyinNetworkException) { throw; } // 网络异常透传,调用方可分型(勿当Cookie/无数据处理)
             catch (Exception ex)
             {
                 Log.Error($"SyncSeriesViedosByMSeriesId error: {ex.Message}", ex);
@@ -414,6 +433,7 @@ namespace dy.net.service
                     return null;
                 }
             }
+            catch (DouyinNetworkException) { throw; } // 网络异常透传,调用方可分型(勿当Cookie/无数据处理)
             catch (Exception ex)
             {
                 Log.Error($"SyncFavoriteVideos error: {ex.Message}", ex);
@@ -459,6 +479,7 @@ namespace dy.net.service
                     return null;
                 }
             }
+            catch (DouyinNetworkException) { throw; } // 网络异常透传,调用方可分型(勿当Cookie/无数据处理)
             catch (Exception ex)
             {
                 Log.Error($"SyncUpderPostVideos error: {ex.Message}", ex);
@@ -499,13 +520,17 @@ namespace dy.net.service
                 else
                 {
                     Log.Error($"SyncMyFollows fail: {response.StatusCode}");
-                    return null;
+                    // HTTP层失败(5xx/4xx)多为服务端/风控瞬时问题,与Cookie失效区分开
+                    throw new DouyinNetworkException($"获取关注列表HTTP失败: {(int)response.StatusCode}", null);
                 }
+            }
+            catch (DouyinNetworkException)
+            {
+                throw; // 网络异常透传,调用方按类型分型(2026-08-29:曾包成InvalidOperationException,误导排查方向)
             }
             catch (Exception ex)
             {
                 Log.Error($"SyncMyFollows error: {ex.Message}", ex);
-                // 优化：抛出前确保资源释放，使用包装异常保留原始堆栈
                 throw new InvalidOperationException("获取关注列表失败", ex);
             }
         }
