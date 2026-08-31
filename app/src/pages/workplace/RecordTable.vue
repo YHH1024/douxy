@@ -205,6 +205,12 @@
         <template v-if="column.dataIndex === 'authorDouyinNo'">
           <span>{{ record.authorDouyinNo || '-' }}</span>
         </template>
+        <template v-if="column.dataIndex === 'awemeId'">
+          <a-tooltip v-if="record.awemeId" :title="`${record.awemeId}（点击复制）`">
+            <a class="secuid-cell" @click="handleCopySecUid(record.awemeId)">{{ record.awemeId }}</a>
+          </a-tooltip>
+          <span v-else>-</span>
+        </template>
         <template v-if="column.dataIndex === 'authorSecUid'">
           <a-tooltip v-if="record.authorSecUid" :title="`${record.authorSecUid}（点击复制）`">
             <a class="secuid-cell" @click="handleCopySecUid(record.authorSecUid)">{{ formatSecUid(record.authorSecUid) }}</a>
@@ -554,6 +560,13 @@ const columns = ref([
     dataIndex: 'videoTitle',
     align: 'left',
     width: 350,
+  },
+  {
+    // 视频ID(aweme_id)——2026-08-31 应需求新增,与 open/videos 接口的 videoId 同源
+    title: '视频ID',
+    dataIndex: 'awemeId',
+    align: 'center',
+    width: 190,
   },
   {
     title: 'CK名称',
