@@ -66,8 +66,9 @@ namespace dy.net.Controllers
                 return new
                 {
                     uperName = f?.UperName ?? v.Author,
-                    douyinNo = f?.DouyinNo,
-                    secUid = f?.SecUid,
+                    // 双路兜底:视频自身列(2026-08-31起入库随响应写入,喜欢/收藏来源也有) → dy_follow关联 → null
+                    douyinNo = v.AuthorDouyinNo ?? f?.DouyinNo,
+                    secUid = v.AuthorSecUid ?? f?.SecUid,
                     uperId = v.AuthorId,
                     title = v.VideoTitle,
                     videoId = v.AwemeId,

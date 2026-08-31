@@ -1510,6 +1510,8 @@ namespace dy.net.job
                 AwemeId = item.AwemeId,
                 Author = item.Author?.Nickname,
                 AuthorId = item.Author?.Uid,
+                AuthorSecUid = item.Author?.SecUid,        // 2026-08-31:随取数响应落库,喜欢/收藏来源也能有
+                AuthorDouyinNo = item.Author?.ShortId,
                 AuthorAvatar = avatorPath,
                 AuthorAvatarUrl = item.Author.AvatarLarger?.UrlList?.FirstOrDefault() ?? item.Author.AvatarThumb?.UrlList?.FirstOrDefault(),
                 CreateTime = DateTimeUtil.Convert10BitTimestamp(item.CreateTime),

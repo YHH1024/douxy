@@ -99,6 +99,16 @@ namespace dy.net.model.entity
         [SugarColumn(Length = 200, IsNullable = true)]
         public string AuthorId { get; set; }
         /// <summary>
+        /// 作者sec_uid(2026-08-31:入库时随取数响应直接落库——喜欢/收藏来源作者不在dy_follow表,join拿不到)
+        /// </summary>
+        [SugarColumn(Length = 500, IsNullable = true)]
+        public string AuthorSecUid { get; set; }
+        /// <summary>
+        /// 作者抖音号(short_id,同上)
+        /// </summary>
+        [SugarColumn(Length = 200, IsNullable = true)]
+        public string AuthorDouyinNo { get; set; }
+        /// <summary>
         /// 作者头像
         /// </summary>
         [SugarColumn(Length = 2000, IsNullable = true)]

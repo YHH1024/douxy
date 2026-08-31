@@ -392,8 +392,10 @@ namespace dy.net.model.response
         //[JsonProperty("risk_notice_text")]
         //public string RiskNoticeText { get; set; }
 
-        //[JsonProperty("sec_uid")]
-        //public string SecUid { get; set; }
+        // 2026-08-31 解除注释并补 short_id:喜欢/收藏来源的作者不在 dy_follow 表,
+        // sec_uid/抖音号只能在取数响应 author 对象里拿(每次列表响应都带)
+        [JsonProperty("sec_uid")]
+        public string SecUid { get; set; }
 
         //[JsonProperty("share_info")]
         //public AuthorShareInfo ShareInfo { get; set; }
@@ -409,6 +411,9 @@ namespace dy.net.model.response
 
         //[JsonProperty("story_ttl")]
         //public int StoryTtl { get; set; }
+
+        [JsonProperty("short_id")]
+        public string ShortId { get; set; }
 
         [JsonProperty("uid")]
         public string Uid { get; set; }
