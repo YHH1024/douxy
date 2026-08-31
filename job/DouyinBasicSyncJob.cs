@@ -1511,7 +1511,11 @@ namespace dy.net.job
                 Author = item.Author?.Nickname,
                 AuthorId = item.Author?.Uid,
                 AuthorSecUid = item.Author?.SecUid,        // 2026-08-31:随取数响应落库,喜欢/收藏来源也能有
-                AuthorDouyinNo = item.Author?.ShortId,
+                // ⚠️列表接口author.short_id恒为null(实测仅detail接口返回)——回落:followed参数(关注来源)→dy_follow按AuthorId查(其他来源)
+                AuthorDouyinNo = !string.IsNullOrWhiteSpace(item.Author?.ShortId)
+                    ? item.Author.ShortId
+                    : followed?.DouyinNo
+                      ?? (await douyinFollowService.GetByUperId(item.Author?.Uid, cookie.MyUserId))?.DouyinNo,
                 AuthorAvatar = avatorPath,
                 AuthorAvatarUrl = item.Author.AvatarLarger?.UrlList?.FirstOrDefault() ?? item.Author.AvatarThumb?.UrlList?.FirstOrDefault(),
                 CreateTime = DateTimeUtil.Convert10BitTimestamp(item.CreateTime),

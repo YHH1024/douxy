@@ -202,6 +202,15 @@
             {{ formatVideoTitle(record.videoTitle) }}
           </a>
         </template>
+        <template v-if="column.dataIndex === 'authorDouyinNo'">
+          <span>{{ record.authorDouyinNo || '-' }}</span>
+        </template>
+        <template v-if="column.dataIndex === 'authorSecUid'">
+          <a-tooltip v-if="record.authorSecUid" :title="`${record.authorSecUid}（点击复制）`">
+            <a class="secuid-cell" @click="handleCopySecUid(record.authorSecUid)">{{ formatSecUid(record.authorSecUid) }}</a>
+          </a-tooltip>
+          <span v-else>-</span>
+        </template>
         <template v-if="column.dataIndex === 'stats'">
           <a-tooltip
             v-if="record.diggCount > 0 || record.playCount > 0"
@@ -521,6 +530,20 @@ const columns = ref([
     }),
   },
   {
+    // 博主的抖音号(short_id)——2026-08-31 应需求新增,数据来自 AuthorDouyinNo 列
+    title: '抖音号',
+    dataIndex: 'authorDouyinNo',
+    align: 'center',
+    width: 120,
+  },
+  {
+    // 博主 sec_uid——超长截断显示,hover 看全文,点击复制
+    title: 'SecUid',
+    dataIndex: 'authorSecUid',
+    align: 'center',
+    width: 170,
+  },
+  {
     title: '视频类型',
     dataIndex: 'viedoCate',
     width: 200,
@@ -685,6 +708,21 @@ const formatPathSeparator = (path: string | undefined) => {
 const formatVideoTitle = (title?: string) => {
   if (!title) return '无标题';
   return title.length > 20 ? `${title.slice(0, 20)}...` : title;
+};
+
+/** sec_uid 截断显示:MS4wLjABAAAA... 前10后4,hover 看全文 */
+const formatSecUid = (secUid?: string) => {
+  if (!secUid) return '-';
+  return secUid.length > 16 ? `${secUid.slice(0, 10)}...${secUid.slice(-4)}` : secUid;
+};
+
+/** 点击复制 sec_uid */
+const handleCopySecUid = (secUid?: string) => {
+  if (!secUid) return;
+  navigator.clipboard?.writeText(secUid).then(
+    () => message.success('SecUid 已复制'),
+    () => message.error('复制失败'),
+  );
 };
 
 /** 格式化弹窗标题：超过40字符显示省略号 */
@@ -1375,6 +1413,17 @@ onMounted(() => {
 </script>
 
 <style>
+/* sec_uid 单元格:等宽字体+可点击复制 */
+.secuid-cell {
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--ant-primary-color, #1677ff);
+  cursor: pointer;
+  user-select: none;
+}
+.secuid-cell:hover {
+  text-decoration: underline;
+}
 /* 新增：优化视频元素的过渡效果，避免关闭时的视觉卡顿 */
 .video-element {
   width: 100%;

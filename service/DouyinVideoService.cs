@@ -79,6 +79,11 @@ namespace dy.net.service
                            existingVideo.VideoSavePath = updateData.VideoSavePath;
                            existingVideo.VideoCoverSavePath = updateData.VideoCoverSavePath;
                            existingVideo.ViedoType = updateData.ViedoType;
+                           // 2026-08-31:身份列随更新回写(存量行可能缺)——空才补,不覆盖已有值
+                           if (string.IsNullOrWhiteSpace(existingVideo.AuthorSecUid))
+                               existingVideo.AuthorSecUid = updateData.AuthorSecUid;
+                           if (string.IsNullOrWhiteSpace(existingVideo.AuthorDouyinNo))
+                               existingVideo.AuthorDouyinNo = updateData.AuthorDouyinNo;
                        }
                    }
                    // 批量更新数据库
