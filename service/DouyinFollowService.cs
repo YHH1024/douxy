@@ -53,6 +53,15 @@ namespace dy.net.service
         }
 
         /// <summary>
+        /// 全量博主清单(免登录内网接口用):不过滤账号,按名称排序。
+        /// </summary>
+        public async Task<List<DouyinFollowed>> GetPagedAllAsync()
+        {
+            var all = await _followRepository.GetListAsync(x => true);
+            return all.OrderBy(x => x.UperName).ToList();
+        }
+
+        /// <summary>
         /// 获取所有手动添加的非关注者
         /// </summary>
         /// <returns></returns>

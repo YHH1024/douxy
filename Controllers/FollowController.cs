@@ -21,6 +21,24 @@ namespace dy.net.Controllers
             _douyinQuartzJobService = douyinQuartzJobService;
         }
 
+        /// <summary>博主ID清单(免登录,内网机器直接拉):返回JSON数组,含 UperName/UperId/SecUid/DouyinNo/LastSyncTime。
+        /// 用途:NAS 部署后供内网其他系统取博主账号ID与sec_uid。</summary>
+        [HttpGet("open/uperids")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetUperIds()
+        {
+            var list = await _douyinFollowService.GetPagedAllAsync();
+            return Ok(list.Select(f => new
+            {
+                uperName = f.UperName,
+                uperId = f.UperId,
+                secUid = f.SecUid,
+                douyinNo = f.DouyinNo,
+                openSync = f.OpenSync,
+                lastSyncTime = f.LastSyncTime == default ? null : f.LastSyncTime.ToString("yyyy-MM-dd HH:mm:ss")
+            }).ToList());
+        }
+
 
 
         /// <summary>
