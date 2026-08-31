@@ -14,11 +14,14 @@ namespace dy.net.Controllers
     {
         private readonly DouyinFollowService _douyinFollowService;
         private readonly DouyinQuartzJobService _douyinQuartzJobService;
+        private readonly DouyinVideoService douyinVideoService;
 
-        public FollowController(DouyinFollowService douyinFollowService, DouyinQuartzJobService douyinQuartzJobService)
+        public FollowController(DouyinFollowService douyinFollowService, DouyinQuartzJobService douyinQuartzJobService,
+            DouyinVideoService douyinVideoService)
         {
             this._douyinFollowService = douyinFollowService;
             _douyinQuartzJobService = douyinQuartzJobService;
+            this.douyinVideoService = douyinVideoService;
         }
 
         /// <summary>博主ID清单(免登录,内网机器直接拉):返回JSON数组,含 UperName/UperId/SecUid/DouyinNo/LastSyncTime。
@@ -32,10 +35,44 @@ namespace dy.net.Controllers
             {
                 uperName = f.UperName,
                 uperId = f.UperId,
-                secUid = f.SecUid,
                 douyinNo = f.DouyinNo,
+                secUid = f.SecUid,
                 openSync = f.OpenSync,
                 lastSyncTime = f.LastSyncTime == default ? null : f.LastSyncTime.ToString("yyyy-MM-dd HH:mm:ss")
+            }).ToList());
+        }
+
+        /// <summary>视频清单(免登录,内网机器直接拉):每条一个视频,博主身份字段在前(uperName/douyinNo/secUid/uperId),
+        /// 视频字段在后(title 后跟 videoId)。支持 ?uperId= 按博主过滤、?limit= 限量(默认全量,先到先得按同步时间倒序)。
+        /// sec_uid 由视频 AuthorId 关联 dy_follow.UperId 得到——视频表本身无此列,未关注的手动博主可能关联不上(secUid为null)。</summary>
+        [HttpGet("open/videos")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetOpenVideos([FromQuery] string uperId, [FromQuery] int limit = 0)
+        {
+            var videos = await douyinVideoService.GetAllAsync();
+            // 博主身份映射:UperId -> (douyinNo, secUid)
+            var follows = await _douyinFollowService.GetPagedAllAsync();
+            var uperMap = follows.GroupBy(f => f.UperId).ToDictionary(g => g.Key, g => g.First());
+
+            var query = videos.OrderByDescending(v => v.SyncTime).AsEnumerable();
+            if (!string.IsNullOrWhiteSpace(uperId))
+                query = query.Where(v => v.AuthorId == uperId);
+            if (limit > 0)
+                query = query.Take(limit);
+
+            return Ok(query.Select(v =>
+            {
+                uperMap.TryGetValue(v.AuthorId, out var f);
+                return new
+                {
+                    uperName = f?.UperName ?? v.Author,
+                    douyinNo = f?.DouyinNo,
+                    secUid = f?.SecUid,
+                    uperId = v.AuthorId,
+                    title = v.VideoTitle,
+                    videoId = v.AwemeId,
+                    syncTime = v.SyncTime == default ? null : v.SyncTime.ToString("yyyy-MM-dd HH:mm:ss")
+                };
             }).ToList());
         }
 
