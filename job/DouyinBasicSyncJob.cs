@@ -1005,7 +1005,7 @@ namespace dy.net.job
             var avatarSavePath = await DownAuthorAvatar(cookie, item,config);
 
             // 创建视频实体
-            return await CreateVideoEntity(config, cookie, item, v, savePath, coverSavePath, avatarSavePath, null, cate);
+            return await CreateVideoEntity(config, cookie, item, v, savePath, coverSavePath, avatarSavePath, null, cate, followed);
         }
 
         private static VideoBitRate GetBestMatchedVideoUrl(Aweme item, AppConfig config)
@@ -1100,7 +1100,7 @@ namespace dy.net.job
                     DataSize = DouyinFileUtils.GetTotalFileSize(dynamicSavePaths.Select(x => x.Path).ToList())  // 合成视频的文件大小
                 }
             };
-            return await CreateVideoEntity(config, cookie, item, virtualBitRate, dynamicSavePaths.FirstOrDefault()?.Path, coverSavePath, avatarSavePath, dynamicSavePaths, cate);
+            return await CreateVideoEntity(config, cookie, item, virtualBitRate, dynamicSavePaths.FirstOrDefault()?.Path, coverSavePath, avatarSavePath, dynamicSavePaths, cate, followed);
         }
 
 
@@ -1278,7 +1278,7 @@ namespace dy.net.job
 
                 // 创建视频实体
                 var videoEntity = await CreateVideoEntity(config,
-                    cookie, item, virtualBitRate, string.IsNullOrWhiteSpace(savePath) ? coverSavePath : savePath, coverSavePath, avatarSavePath, null, cate);
+                    cookie, item, virtualBitRate, string.IsNullOrWhiteSpace(savePath) ? coverSavePath : savePath, coverSavePath, avatarSavePath, null, cate, followed);
 
                 // 特殊处理合成视频的字段
                 videoEntity.FileHash = string.Empty; // 合成视频没有原始文件哈希
@@ -1500,7 +1500,7 @@ namespace dy.net.job
         /// <param name="cate">短剧、合集、自定义收藏夹</param>
         /// <returns>创建的视频实体对象</returns>
         private async Task<DouyinVideo> CreateVideoEntity(AppConfig config,
-            DouyinCookie cookie, Aweme item, VideoBitRate bitRate, string savePath, string coverSavePath, string avatorPath, List<DouyinMergeVideoDto> dynamicVideos = null, DouyinCollectCate cate = null)
+            DouyinCookie cookie, Aweme item, VideoBitRate bitRate, string savePath, string coverSavePath, string avatorPath, List<DouyinMergeVideoDto> dynamicVideos = null, DouyinCollectCate cate = null, DouyinFollowed followed = null)
         {
             // 获取视频标签
             var (tag1, tag2, tag3) = GetVideoTags(item);

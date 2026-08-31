@@ -43,38 +43,111 @@ namespace dy.net.Controllers
         }
 
         /// <summary>视频清单(免登录,内网机器直接拉):每条一个视频,博主身份字段在前(uperName/douyinNo/secUid/uperId),
-        /// 视频字段在后(title 后跟 videoId)。支持 ?uperId= 按博主过滤、?limit= 限量(默认全量,先到先得按同步时间倒序)。
-        /// sec_uid 由视频 AuthorId 关联 dy_follow.UperId 得到——视频表本身无此列,未关注的手动博主可能关联不上(secUid为null)。</summary>
+        /// 视频字段在后(title 后跟 videoId)。支持多维度筛选(全部可选,组合使用):
+        /// uperId=博主ID精确 | uperName=博主名模糊 | syncStart/syncEnd=同步时间区间 | createStart/createEnd=发布时间区间
+        /// minPlay/maxPlay minDigg/maxDigg minComment/maxComment minShare/maxShare minCollect/maxCollect=五项统计区间
+        /// viedoType=来源(1喜欢2收藏3关注6合集7短剧5自定义收藏,数字) | keyword=标题关键词模糊
+        /// pageIndex/pageSize=分页(默认全量,给了pageSize才分页,上限500防误拉全库);orderBy=syncTime|createTime|digg(默认syncTime倒序)
+        /// secUid 双路兜底:视频自身列 → dy_follow 关联 → null。</summary>
         [HttpGet("open/videos")]
         [AllowAnonymous]
-        public async Task<IActionResult> GetOpenVideos([FromQuery] string uperId, [FromQuery] int limit = 0)
+        public async Task<IActionResult> GetOpenVideos(
+            [FromQuery] string uperId, [FromQuery] string uperName, [FromQuery] string keyword,
+            [FromQuery] string syncStart, [FromQuery] string syncEnd,
+            [FromQuery] string createStart, [FromQuery] string createEnd,
+            [FromQuery] long? minPlay, [FromQuery] long? maxPlay,
+            [FromQuery] long? minDigg, [FromQuery] long? maxDigg,
+            [FromQuery] long? minComment, [FromQuery] long? maxComment,
+            [FromQuery] long? minShare, [FromQuery] long? maxShare,
+            [FromQuery] long? minCollect, [FromQuery] long? maxCollect,
+            [FromQuery] int? viedoType,
+            [FromQuery] int pageIndex = 1, [FromQuery] int pageSize = 0,
+            [FromQuery] string orderBy = "syncTime")
         {
             var videos = await douyinVideoService.GetAllAsync();
-            // 博主身份映射:UperId -> (douyinNo, secUid)
+            // 博主身份映射:UperId -> (douyinNo, secUid, UperName)
             var follows = await _douyinFollowService.GetPagedAllAsync();
             var uperMap = follows.GroupBy(f => f.UperId).ToDictionary(g => g.Key, g => g.First());
+            // 博主名筛选:先解出命中的UperId集合(与uperId参数叠加)
+            HashSet<string> nameMatchIds = null;
+            if (!string.IsNullOrWhiteSpace(uperName))
+                nameMatchIds = follows.Where(f => !string.IsNullOrEmpty(f.UperName) && f.UperName.Contains(uperName))
+                    .Select(f => f.UperId).ToHashSet();
 
-            var query = videos.OrderByDescending(v => v.SyncTime).AsEnumerable();
+            DateTime? TryParse(string s) => string.IsNullOrWhiteSpace(s) ? null : (DateTime.TryParse(s, out var d) ? d : (DateTime?)null);
+
+            IEnumerable<DouyinVideo> query = videos;
             if (!string.IsNullOrWhiteSpace(uperId))
                 query = query.Where(v => v.AuthorId == uperId);
-            if (limit > 0)
-                query = query.Take(limit);
+            if (nameMatchIds != null)
+                query = query.Where(v => v.AuthorId != null && nameMatchIds.Contains(v.AuthorId));
+            if (!string.IsNullOrWhiteSpace(keyword))
+                query = query.Where(v => !string.IsNullOrEmpty(v.VideoTitle) && v.VideoTitle.Contains(keyword));
+            var sStart = TryParse(syncStart); var sEnd = TryParse(syncEnd);
+            if (sStart.HasValue) query = query.Where(v => v.SyncTime >= sStart.Value);
+            if (sEnd.HasValue) query = query.Where(v => v.SyncTime <= sEnd.Value);
+            var cStart = TryParse(createStart); var cEnd = TryParse(createEnd);
+            if (cStart.HasValue) query = query.Where(v => v.CreateTime >= cStart.Value);
+            if (cEnd.HasValue) query = query.Where(v => v.CreateTime <= cEnd.Value);
+            if (minPlay.HasValue) query = query.Where(v => (v.PlayCount ?? 0) >= minPlay.Value);
+            if (maxPlay.HasValue) query = query.Where(v => (v.PlayCount ?? 0) <= maxPlay.Value);
+            if (minDigg.HasValue) query = query.Where(v => (v.DiggCount ?? 0) >= minDigg.Value);
+            if (maxDigg.HasValue) query = query.Where(v => (v.DiggCount ?? 0) <= maxDigg.Value);
+            if (minComment.HasValue) query = query.Where(v => (v.CommentCount ?? 0) >= minComment.Value);
+            if (maxComment.HasValue) query = query.Where(v => (v.CommentCount ?? 0) <= maxComment.Value);
+            if (minShare.HasValue) query = query.Where(v => (v.ShareCount ?? 0) >= minShare.Value);
+            if (maxShare.HasValue) query = query.Where(v => (v.ShareCount ?? 0) <= maxShare.Value);
+            if (minCollect.HasValue) query = query.Where(v => (v.CollectCount ?? 0) >= minCollect.Value);
+            if (maxCollect.HasValue) query = query.Where(v => (v.CollectCount ?? 0) <= maxCollect.Value);
+            if (viedoType.HasValue && Enum.IsDefined(typeof(VideoTypeEnum), viedoType.Value))
+                query = query.Where(v => (int)v.ViedoType == viedoType.Value);
 
-            return Ok(query.Select(v =>
+            // 排序(白名单字段,默认同步时间倒序)
+            query = (orderBy ?? "").ToLower() switch
             {
-                uperMap.TryGetValue(v.AuthorId, out var f);
-                return new
+                "createtime" => query.OrderByDescending(v => v.CreateTime),
+                "digg" => query.OrderByDescending(v => v.DiggCount ?? 0),
+                "play" => query.OrderByDescending(v => v.PlayCount ?? 0),
+                "collect" => query.OrderByDescending(v => v.CollectCount ?? 0),
+                _ => query.OrderByDescending(v => v.SyncTime),
+            };
+
+            var total = query.Count();
+            // 分页:pageSize>0 才启用(默认全量兼容旧行为),上限500防误操作拉爆内存
+            if (pageSize > 0)
+            {
+                if (pageSize > 500) pageSize = 500;
+                query = query.Skip((pageIndex - 1) * pageSize).Take(pageSize);
+            }
+
+            return Ok(new
+            {
+                total,
+                pageIndex = pageSize > 0 ? pageIndex : (int?)null,
+                pageSize = pageSize > 0 ? pageSize : (int?)null,
+                data = query.Select(v =>
                 {
-                    uperName = f?.UperName ?? v.Author,
-                    // 双路兜底:视频自身列(2026-08-31起入库随响应写入,喜欢/收藏来源也有) → dy_follow关联 → null
-                    douyinNo = v.AuthorDouyinNo ?? f?.DouyinNo,
-                    secUid = v.AuthorSecUid ?? f?.SecUid,
-                    uperId = v.AuthorId,
-                    title = v.VideoTitle,
-                    videoId = v.AwemeId,
-                    syncTime = v.SyncTime == default ? null : v.SyncTime.ToString("yyyy-MM-dd HH:mm:ss")
-                };
-            }).ToList());
+                    uperMap.TryGetValue(v.AuthorId, out var f);
+                    return new
+                    {
+                        uperName = f?.UperName ?? v.Author,
+                        // 双路兜底:视频自身列(2026-08-31起入库随响应写入,喜欢/收藏来源也有) → dy_follow关联 → null
+                        douyinNo = v.AuthorDouyinNo ?? f?.DouyinNo,
+                        secUid = v.AuthorSecUid ?? f?.SecUid,
+                        uperId = v.AuthorId,
+                        title = v.VideoTitle,
+                        videoId = v.AwemeId,
+                        playCount = v.PlayCount ?? 0,
+                        diggCount = v.DiggCount ?? 0,
+                        commentCount = v.CommentCount ?? 0,
+                        shareCount = v.ShareCount ?? 0,
+                        collectCount = v.CollectCount ?? 0,
+                        viedoType = v.ViedoType.ToString(),
+                        syncTime = v.SyncTime == default ? null : v.SyncTime.ToString("yyyy-MM-dd HH:mm:ss"),
+                        createTime = v.CreateTime == default ? null : v.CreateTime.ToString("yyyy-MM-dd HH:mm:ss")
+                    };
+                }).ToList()
+            });
         }
 
 
