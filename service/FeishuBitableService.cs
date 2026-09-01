@@ -424,12 +424,18 @@ namespace dy.net.service
 
             var fields = new object[]
             {
+                // 2026-09-01 列序对齐抖小云前端页面:博主后跟抖音号/SecUid,标题后跟视频ID。
+                // ⚠️飞书API不支持移动已有列(实测index/after_field_id均被忽略)——顺序只在建表时生效;
+                // 已建的老表想改序只能删表重推(推送是清空重写,幂等)
                 new { field_name = "同步时间", type = 5, property = new { date_formatter = "yyyy/MM/dd HH:mm" } },
                 new { field_name = "发布时间", type = 5, property = new { date_formatter = "yyyy/MM/dd HH:mm" } },
                 new { field_name = "同步类型", type = 3 },
                 new { field_name = "博主", type = 1 },
+                new { field_name = "抖音号", type = 1 },
+                new { field_name = "SecUid", type = 1 },
                 new { field_name = "视频类型", type = 3 },
                 new { field_name = "视频标题", type = 1 },
+                new { field_name = "视频ID", type = 1 },
                 new { field_name = "CK名称", type = 3 },
                 new { field_name = "播放", type = 2, property = new { formatter = "0" } },
                 new { field_name = "点赞", type = 2, property = new { formatter = "0" } },
@@ -439,10 +445,6 @@ namespace dy.net.service
                 new { field_name = "字幕全文", type = 1 },
                 new { field_name = "播放链接", type = 15 }, // 超链接字段:写入{link,text}对象(probe实证;type1不吃段数组1254060)
                 new { field_name = "内网播放", type = 15 },
-                // 2026-09-01 新增身份三列(文本)——老表由 EnsurePlayUrlFieldAsync 自动补
-                new { field_name = "抖音号", type = 1 },
-                new { field_name = "SecUid", type = 1 },
-                new { field_name = "视频ID", type = 1 },
             };
             var createResp = await client.PostAsJsonAsync($"{FEISHU_HOST}/open-apis/bitable/v1/apps/{baseToken}/tables",
                 new { table = new { name = tableName, fields } });
