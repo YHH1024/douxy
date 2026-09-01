@@ -439,6 +439,10 @@ namespace dy.net.service
                 new { field_name = "字幕全文", type = 1 },
                 new { field_name = "播放链接", type = 15 }, // 超链接字段:写入{link,text}对象(probe实证;type1不吃段数组1254060)
                 new { field_name = "内网播放", type = 15 },
+                // 2026-09-01 新增身份三列(文本)——老表由 EnsurePlayUrlFieldAsync 自动补
+                new { field_name = "抖音号", type = 1 },
+                new { field_name = "SecUid", type = 1 },
+                new { field_name = "视频ID", type = 1 },
             };
             var createResp = await client.PostAsJsonAsync($"{FEISHU_HOST}/open-apis/bitable/v1/apps/{baseToken}/tables",
                 new { table = new { name = tableName, fields } });
@@ -449,7 +453,7 @@ namespace dy.net.service
             return createBody.Data.TableId;
         }
 
-        /// <summary>老表自动补列:表已存在但缺超链接列(播放链接/内网播放)时调 fields API 追加。失败不阻断推送。</summary>
+        /// <summary>老表自动补列:表已存在但缺新增列(播放链接/内网播放=超链接,抖音号/SecUid/视频ID=文本)时调 fields API 追加。失败不阻断推送。</summary>
         private async Task EnsurePlayUrlFieldAsync(AppConfig config, string baseToken, string tableId)
         {
             try
@@ -463,12 +467,18 @@ namespace dy.net.service
                     return;
                 }
                 var existing = fieldsBody.Data.Items.Select(f => f.FieldName).ToHashSet();
-                foreach (var name in new[] { "播放链接", "内网播放" })
+                // 列名 → 字段类型(15超链接/1文本)
+                var toAdd = new Dictionary<string, int>
+                {
+                    ["播放链接"] = 15, ["内网播放"] = 15,
+                    ["抖音号"] = 1, ["SecUid"] = 1, ["视频ID"] = 1,
+                };
+                foreach (var (name, type) in toAdd)
                 {
                     if (existing.Contains(name)) continue;
                     var addResp = await client.PostAsJsonAsync(
                         $"{FEISHU_HOST}/open-apis/bitable/v1/apps/{baseToken}/tables/{tableId}/fields",
-                        new { field_name = name, type = 15 });
+                        new { field_name = name, type });
                     var addBody = await addResp.Content.ReadFromJsonAsync<FeishuResp<object>>();
                     if (addBody?.Code == 0)
                         Log.Information("[feishu] 老表已自动补「{Name}」列 {TableId}", name, tableId);
@@ -478,7 +488,7 @@ namespace dy.net.service
             }
             catch (Exception ex)
             {
-                Log.Warning(ex, "[feishu] 补超链接列异常(不阻断推送)");
+                Log.Warning(ex, "[feishu] 补新增列异常(不阻断推送)");
             }
         }
 
@@ -548,6 +558,9 @@ namespace dy.net.service
                         ["内网播放"] = string.IsNullOrWhiteSpace(r.LanPlayUrl)
                             ? (object)string.Empty
                             : new { link = r.LanPlayUrl, text = "▶ 内网播放" },
+                        ["抖音号"] = r.DouyinNo ?? string.Empty,
+                        ["SecUid"] = r.SecUid ?? string.Empty,
+                        ["视频ID"] = r.VideoId ?? string.Empty,
                     }
                 }).ToList();
 

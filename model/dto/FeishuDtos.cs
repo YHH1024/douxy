@@ -23,6 +23,12 @@ namespace dy.net.model.dto
         public string PlayUrl { get; set; }
         /// <summary>内网播放链接({LanBaseUrl}/api/video/play/{Id},免登录流式播放);LanBaseUrl未配置为空串。</summary>
         public string LanPlayUrl { get; set; }
+        /// <summary>博主抖音号(AuthorDouyinNo,2026-09-01 加列)。</summary>
+        public string DouyinNo { get; set; }
+        /// <summary>博主sec_uid(2026-09-01 加列)。</summary>
+        public string SecUid { get; set; }
+        /// <summary>视频ID(AwemeId,2026-09-01 加列)。</summary>
+        public string VideoId { get; set; }
     }
 
     /// <summary>推送结果。</summary>

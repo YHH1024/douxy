@@ -116,6 +116,9 @@ namespace dy.net.service
                         LanPlayUrl = string.IsNullOrWhiteSpace(lanBase) || string.IsNullOrWhiteSpace(v.VideoSavePath)
                             ? string.Empty
                             : $"{lanBase.TrimEnd('/')}/api/video/play/{v.Id}",
+                        DouyinNo = v.AuthorDouyinNo ?? string.Empty,
+                        SecUid = v.AuthorSecUid ?? string.Empty,
+                        VideoId = v.AwemeId ?? string.Empty,
                     });
                 }
                 result = await bitableService.PushDailyAsync(config, rows, pushDate);
