@@ -312,8 +312,9 @@ namespace dy.net.model.response
         //[JsonProperty("status")]
         //public Status Status { get; set; }
 
-        //[JsonProperty("text_extra")]
-        //public List<TextExtra> TextExtra { get; set; }
+        // 2026-09-01 解除注释:部分视频抖音只给text_extra(标题#话题解析结果)不给video_tag结构化数组——tag回落数据源
+        [JsonProperty("text_extra")]
+        public List<TextExtra> TextExtra { get; set; }
 
         //[JsonProperty("trends_event_track")]
         //public string TrendsEventTrack { get; set; }
@@ -1110,32 +1111,14 @@ namespace dy.net.model.response
     //    public int ReviewStatus { get; set; }
     //}
 
-    //public class TextExtra
-    //{
-    //    [JsonProperty("caption_end")]
-    //    public int CaptionEnd { get; set; }
+    public class TextExtra
+    {
+        [JsonProperty("hashtag_id")]
+        public string HashtagId { get; set; }
 
-    //    [JsonProperty("caption_start")]
-    //    public int CaptionStart { get; set; }
-
-    //    [JsonProperty("end")]
-    //    public int End { get; set; }
-
-    //    [JsonProperty("hashtag_id")]
-    //    public string HashtagId { get; set; }
-
-    //    [JsonProperty("hashtag_name")]
-    //    public string HashtagName { get; set; }
-
-    //    [JsonProperty("is_commerce")]
-    //    public bool IsCommerce { get; set; }
-
-    //    [JsonProperty("start")]
-    //    public int Start { get; set; }
-
-    //    [JsonProperty("type")]
-    //    public int Type { get; set; }
-    //}
+        [JsonProperty("hashtag_name")]
+        public string HashtagName { get; set; }
+    }
 
     public class Video
     {

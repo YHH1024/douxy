@@ -1406,10 +1406,25 @@ namespace dy.net.job
         protected (string tag1, string tag2, string tag3) GetVideoTags(Aweme item)
         {
             var tags = item.VideoTags;
+            if (tags != null && tags.Any(x => !string.IsNullOrWhiteSpace(x.TagName)))
+            {
+                return (
+                    tags.FirstOrDefault(x => x.Level == 1)?.TagName,
+                    tags.FirstOrDefault(x => x.Level == 2)?.TagName,
+                    tags.FirstOrDefault(x => x.Level == 3)?.TagName
+                );
+            }
+            // 2026-09-01 回落:部分视频抖音不给video_tag结构化数组,只给text_extra(标题#话题解析结果,带hashtag_name)
+            // 实测约15-20%视频走这条路,不回落则「视频类型」列为空
+            var names = (item.TextExtra ?? new List<TextExtra>())
+                .Where(t => !string.IsNullOrWhiteSpace(t.HashtagName))
+                .Select(t => t.HashtagName)
+                .Take(3)
+                .ToList();
             return (
-                tags?.FirstOrDefault(x => x.Level == 1)?.TagName,
-                tags?.FirstOrDefault(x => x.Level == 2)?.TagName,
-                tags?.FirstOrDefault(x => x.Level == 3)?.TagName
+                names.ElementAtOrDefault(0),
+                names.ElementAtOrDefault(1),
+                names.ElementAtOrDefault(2)
             );
         }
 
