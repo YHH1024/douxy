@@ -1,6 +1,6 @@
 # 抖小云内网数据接口使用指南
 
-> 版本：2026-09-01 ｜ 适用：抖小云 `tag-fallback` 及之后版本
+> 版本：2026-09-02 ｜ 适用：抖小云 `3da773a` 及之后版本（open/videos 已含 19 字段全量）
 > 两个接口均**免登录**，仅供**可信内网**使用（请勿将端口映射到公网）
 
 - 服务地址：`http://<抖小云IP>:10101`（NAS 部署后即 `http://10.1.10.21:10101`）
@@ -65,7 +65,7 @@ for u in data[:3]:
 GET /api/follow/open/videos
 ```
 
-### 返回字段说明（data 内每条）
+### 返回字段说明（data 内每条，共 19 个字段）
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
@@ -81,8 +81,13 @@ GET /api/follow/open/videos
 | shareCount | long | 分享数 |
 | collectCount | long | 收藏数 |
 | viedoType | string | 来源：dy_favorite 喜欢 / dy_collects 收藏 / dy_follows 关注 / dy_custom_collect 自定义收藏 / dy_mix 合集 / dy_series 短剧 |
-| syncTime | string | 同步入抖小云的时间 |
-| createTime | string | 视频发布时间 |
+| syncTime | string | 同步入抖小云的时间（日期筛选 syncStart/syncEnd 按此字段） |
+| createTime | string | 视频发布时间（createStart/createEnd 按此字段） |
+| id | string | 库内视频 ID（lanPlayUrl 的键，与 videoId 不同） |
+| lanPlayUrl | string | **内网免登录播放直链**（流式，支持进度拖动）；未下载视频为空串 |
+| playUrl | string | 抖音播放页链接 `https://www.douyin.com/video/{videoId}` |
+| dyUser | string | CK名称（用哪个账号同步的） |
+| subtitle | string | 字幕全文（ASR 转写）；未转写为空串 |
 
 ### 筛选参数（全部可选、自由组合）
 
@@ -91,8 +96,8 @@ GET /api/follow/open/videos
 | uperId | 按博主 ID 精确过滤 | `uperId=95845330308` |
 | uperName | 按博主昵称模糊 | `uperName=%E8%80%B3%E7%81%AB`（耳火） |
 | keyword | 标题关键词模糊 | `keyword=%E5%BA%95%E5%A6%86`（底妆） |
-| syncStart / syncEnd | 同步时间区间 | `syncStart=2026-08-30&syncEnd=2026-08-31` |
-| createStart / createEnd | 发布时间区间 | 同上格式 |
+| syncStart / syncEnd | **同步日期区间**（⚠️闭区间含边界：「9月1日全天」应传 `syncStart=2026-09-01&syncEnd=2026-09-02`） | `syncStart=2026-09-01&syncEnd=2026-09-02` |
+| createStart / createEnd | 发布日期区间（格式同上，同样注意闭区间） | `createStart=2026-09-01&createEnd=2026-09-02` |
 | minPlay / maxPlay | 播放数区间 | `minPlay=10000` |
 | minDigg / maxDigg | 点赞数区间 | `minDigg=1000&maxDigg=50000` |
 | minComment / maxComment | 评论数区间 | |
@@ -154,10 +159,15 @@ for row in all_rows:
 print(f"共 {len(uniq)} 条")
 ```
 
-**返回示例**（截取）
+**⑤ 拉某一天的完整数据**（即飞书多维表格每天推送的口径）
+```bash
+curl "http://10.1.10.21:10101/api/follow/open/videos?syncStart=2026-09-01&syncEnd=2026-09-02"
+```
+
+**返回示例**（截取，含 2026-09-02 新增的 5 个字段）
 ```json
 {
-  "total": 397,
+  "total": 403,
   "pageIndex": null,
   "pageSize": null,
   "data": [
@@ -175,7 +185,12 @@ print(f"共 {len(uniq)} 条")
       "collectCount": 567,
       "viedoType": "dy_follows",
       "syncTime": "2026-09-01 22:15:03",
-      "createTime": "2026-08-31 18:00:00"
+      "createTime": "2026-08-31 18:00:00",
+      "id": "2094806479646490624",
+      "lanPlayUrl": "http://10.1.10.21:10101/api/video/play/2094806479646490624",
+      "playUrl": "https://www.douyin.com/video/7289605212971535655",
+      "dyUser": "测试",
+      "subtitle": "夏天底妆总是脱妆？三个技巧..."
     }
   ]
 }
@@ -188,7 +203,11 @@ print(f"共 {len(uniq)} 条")
 | 问题 | 说明 |
 |---|---|
 | 中文筛选查不到数据 | 参数必须 UTF-8 URL 编码；用 python requests 默认正确，手拼 URL 注意编码 |
+| 按天筛选漏掉当天数据 | syncEnd/createEnd 是**闭区间**（<=）：传 `2026-09-01` 等于 9/1 00:00:00，当天数据全排除。「全天」要传次日 `syncEnd=2026-09-02` |
 | secUid / douyinNo 为 null | 极少数历史数据无此值（作者未关注且未回填成功）；新数据 100% 有 |
 | playCount 为 0 | 抖音部分列表接口不返回播放数，属数据源限制 |
+| lanPlayUrl 为空串 | 该视频未下载到本地（只有元数据）；有文件的才给播放直链 |
+| subtitle 为空串 | 该视频未做 ASR 转写（或纯音乐无内容） |
+| 带字幕的响应较大 | 全量含 subtitle 可能几 MB；不需要字幕可忽略该字段 |
 | 一次拉多少合适 | 全量（几千条）一次拉即可；建议接入方做增量（syncStart）定时拉取 |
 | 数据多久更新 | 抖小云每 30 分钟同步一轮；五项统计每天 05:30 回填刷新 |
