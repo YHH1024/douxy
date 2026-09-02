@@ -15,13 +15,15 @@ namespace dy.net.Controllers
         private readonly DouyinFollowService _douyinFollowService;
         private readonly DouyinQuartzJobService _douyinQuartzJobService;
         private readonly DouyinVideoService douyinVideoService;
+        private readonly DouyinCommonService commonService;
 
         public FollowController(DouyinFollowService douyinFollowService, DouyinQuartzJobService douyinQuartzJobService,
-            DouyinVideoService douyinVideoService)
+            DouyinVideoService douyinVideoService, DouyinCommonService commonService)
         {
             this._douyinFollowService = douyinFollowService;
             _douyinQuartzJobService = douyinQuartzJobService;
             this.douyinVideoService = douyinVideoService;
+            this.commonService = commonService;
         }
 
         /// <summary>博主ID清单(免登录,内网机器直接拉):返回JSON数组,含 UperName/UperId/SecUid/DouyinNo/LastSyncTime。
@@ -65,6 +67,11 @@ namespace dy.net.Controllers
             [FromQuery] string orderBy = "syncTime")
         {
             var videos = await douyinVideoService.GetAllAsync();
+            // 内网播放链接基数:优先config的LanBaseUrl,未配置回落当前请求Host(对方系统从哪访问就用哪个地址)
+            var config = commonService.GetConfig();
+            var lanBase = !string.IsNullOrWhiteSpace(config?.LanBaseUrl)
+                ? config.LanBaseUrl
+                : $"{Request.Scheme}://{Request.Host}";
             // 博主身份映射:UperId -> (douyinNo, secUid, UperName)
             var follows = await _douyinFollowService.GetPagedAllAsync();
             var uperMap = follows.GroupBy(f => f.UperId).ToDictionary(g => g.Key, g => g.First());
@@ -144,10 +151,25 @@ namespace dy.net.Controllers
                         collectCount = v.CollectCount ?? 0,
                         viedoType = v.ViedoType.ToString(),
                         syncTime = v.SyncTime == default ? null : v.SyncTime.ToString("yyyy-MM-dd HH:mm:ss"),
-                        createTime = v.CreateTime == default ? null : v.CreateTime.ToString("yyyy-MM-dd HH:mm:ss")
+                        createTime = v.CreateTime == default ? null : v.CreateTime.ToString("yyyy-MM-dd HH:mm:ss"),
+                        // 2026-09-02 补齐对齐飞书18列:以下四项让本接口单请求=飞书多维表格同款数据
+                        id = v.Id,                                          // 库内雪花Id(内网播放接口的键)
+                        lanPlayUrl = string.IsNullOrWhiteSpace(lanBase) || string.IsNullOrWhiteSpace(v.VideoSavePath)
+                            ? string.Empty
+                            : $"{lanBase.TrimEnd('/')}/api/video/play/{v.Id}", // 免登录流式播放直链
+                        playUrl = string.IsNullOrWhiteSpace(v.AwemeId) ? string.Empty : $"https://www.douyin.com/video/{v.AwemeId}",
+                        dyUser = v.DyUser ?? string.Empty,                   // CK名称(哪个账号同步的)
+                        subtitle = string.IsNullOrWhiteSpace(v.SubtitleSavePath) ? string.Empty : SubtitleText(v.SubtitleSavePath)
                     };
                 }).ToList()
             });
+        }
+
+        /// <summary>读字幕全文(优先.txt纯文本,退化.srt;失败/超长截断)——与飞书推送/Excel导出同源逻辑。</summary>
+        private static string SubtitleText(string path)
+        {
+            var text = dy.net.utils.SubtitleTextReader.ReadAsync(path).GetAwaiter().GetResult();
+            return text ?? string.Empty;
         }
 
 
