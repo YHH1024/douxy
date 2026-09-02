@@ -1,6 +1,7 @@
 # 抖小云内网数据接口使用指南
 
-> 版本：2026-09-02 ｜ 适用：抖小云 `3da773a` 及之后版本（open/videos 已含 19 字段全量）
+> 版本：2026-09-02（第2次更新） ｜ 适用：抖小云 `672348d` 及之后版本
+> 变更要点：**open/videos 默认每页 100 条**（从近到远，翻页传 pageIndex；全量需显式 pageSize=0）；字幕默认不返回（withSubtitle=true 开启）
 > 两个接口均**免登录**，仅供**可信内网**使用（请勿将端口映射到公网）
 
 - 服务地址：`http://<抖小云IP>:10101`（NAS 部署后即 `http://10.1.10.21:10101`）
@@ -87,7 +88,7 @@ GET /api/follow/open/videos
 | lanPlayUrl | string | **内网免登录播放直链**（流式，支持进度拖动）；未下载视频为空串 |
 | playUrl | string | 抖音播放页链接 `https://www.douyin.com/video/{videoId}` |
 | dyUser | string | CK名称（用哪个账号同步的） |
-| subtitle | string | 字幕全文（ASR 转写）；未转写为空串 |
+| subtitle | string | 字幕全文（ASR 转写）；**默认不返回（空串），withSubtitle=true 才读**；未转写也为空串 |
 
 ### 筛选参数（全部可选、自由组合）
 
@@ -105,37 +106,50 @@ GET /api/follow/open/videos
 | minCollect / maxCollect | 收藏数区间 | |
 | viedoType | 来源类型数字 | `1`喜欢 `2`收藏 `3`关注 `5`自定义 `6`合集 `7`短剧 |
 | orderBy | 排序（倒序） | `syncTime`（默认）/`createTime`/`digg`/`play`/`collect` |
-| pageIndex / pageSize | 分页 | `pageSize` 上限 500；**不传 pageSize = 返回全量** |
+| pageIndex / pageSize | 分页（2026-09-02 起**默认每页 100 条**、按同步时间从近到远；翻页传 `pageIndex`；要全量传 `pageSize=0`，响应大慎用） | `pageSize` 上限 500 |
+| withSubtitle | 是否返回字幕全文（默认 false 不带；字幕需逐条读盘，带则变慢，全量模式尤其明显） | `withSubtitle=true` |
 
 ### 响应结构
 
 ```json
 {
-  "total": 2252,          // 筛选命中总数（分页时判断拉完的依据）
-  "pageIndex": 1,         // 分页时才有，全量模式为 null
+  "total": 5406,          // 筛选命中总数（翻页判断拉完的依据：拉够 total 或 data 为空即停）
+  "pageIndex": 1,         // 当前页；全量模式（pageSize=0）时为 null
   "pageSize": 100,
-  "data": [ ... ]
+  "data": [ ... ]         // 本页数据，按同步时间从近到远（默认 orderBy=syncTime 倒序）
 }
 ```
 
 ### 调用示例
 
-**① 全量拉取**（数据几千条时一步到位，约 1.6MB）
+**① 默认请求：最新 100 条**（不带参数即第 1 页，从近到远）
 ```bash
 curl http://10.1.10.21:10101/api/follow/open/videos
 ```
 
-**② 组合筛选：耳火最近一周点赞过千的视频，按点赞排序，取前 20**
+**② 翻页：取后续数据**
+```bash
+curl "http://10.1.10.21:10101/api/follow/open/videos?pageIndex=2"
+curl "http://10.1.10.21:10101/api/follow/open/videos?pageIndex=3"
+# 循环翻到 data 为空 或 累计条数 >= total 为止
+```
+
+**③ 全量拉取**（⚠️显式传 pageSize=0；响应约 3.7MB，多 人同时拉会更慢，建议用翻页或增量）
+```bash
+curl "http://10.1.10.21:10101/api/follow/open/videos?pageSize=0"
+```
+
+**④ 组合筛选：耳火最近一周点赞过千的视频，按点赞排序，取前 20**
 ```bash
 curl "http://10.1.10.21:10101/api/follow/open/videos?uperName=%E8%80%B3%E7%81%AB&syncStart=2026-08-25&minDigg=1000&orderBy=digg&pageSize=20"
 ```
 
-**③ 增量同步：只拉某天之后新入库的**（推荐给定时任务）
+**⑤ 增量同步：只拉某天之后新入库的**（推荐给定时任务）
 ```bash
 curl "http://10.1.10.21:10101/api/follow/open/videos?syncStart=2026-09-01%2000:00:00&pageSize=500"
 ```
 
-**④ 翻页拉全量**（数据量大时）
+**⑥ 翻页拉全量**（数据量大时）
 ```python
 import requests
 
@@ -159,17 +173,22 @@ for row in all_rows:
 print(f"共 {len(uniq)} 条")
 ```
 
-**⑤ 拉某一天的完整数据**（即飞书多维表格每天推送的口径）
+**⑦ 拉某一天的完整数据**（即飞书多维表格每天推送的口径）
 ```bash
 curl "http://10.1.10.21:10101/api/follow/open/videos?syncStart=2026-09-01&syncEnd=2026-09-02"
 ```
 
-**返回示例**（截取，含 2026-09-02 新增的 5 个字段）
+**⑧ 带字幕全文**（默认不带；逐条读盘，页越大越慢）
+```bash
+curl "http://10.1.10.21:10101/api/follow/open/videos?withSubtitle=true&pageSize=100"
+```
+
+**返回示例**（⑦拉某天的口径，截取；subtitle 仅 withSubtitle=true 时非空）
 ```json
 {
   "total": 403,
-  "pageIndex": null,
-  "pageSize": null,
+  "pageIndex": 1,
+  "pageSize": 100,
   "data": [
     {
       "uperName": "丹妮Danee【绷带面膜到货啦！】",
@@ -208,6 +227,6 @@ curl "http://10.1.10.21:10101/api/follow/open/videos?syncStart=2026-09-01&syncEn
 | playCount 为 0 | 抖音部分列表接口不返回播放数，属数据源限制 |
 | lanPlayUrl 为空串 | 该视频未下载到本地（只有元数据）；有文件的才给播放直链 |
 | subtitle 为空串 | 该视频未做 ASR 转写（或纯音乐无内容） |
-| 带字幕的响应较大 | 全量含 subtitle 可能几 MB；不需要字幕可忽略该字段 |
+| 带字幕的响应较大 | 字幕默认不返回（快）；`withSubtitle=true` 逐条读盘，页越大越慢（100条约7s），按需开启 |
 | 一次拉多少合适 | 全量（几千条）一次拉即可；建议接入方做增量（syncStart）定时拉取 |
 | 数据多久更新 | 抖小云每 30 分钟同步一轮；五项统计每天 05:30 回填刷新 |
