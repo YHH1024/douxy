@@ -1,8 +1,8 @@
 # 抖小云内网数据接口使用指南
 
-> 版本：2026-09-02（第2次更新） ｜ 适用：抖小云 `672348d` 及之后版本
-> 变更要点：**open/videos 默认每页 100 条**（从近到远，翻页传 pageIndex；全量需显式 pageSize=0）；字幕默认不返回（withSubtitle=true 开启）
-> 两个接口均**免登录**，仅供**可信内网**使用（请勿将端口映射到公网）
+> 版本：2026-09-02（第3次更新） ｜ 适用：抖小云 `b3b95f5` 及之后版本
+> **主接口只有 1 个**：视频清单接口（博主信息已内嵌在每条视频里，无需单独调用博主接口）
+> 接口**免登录**，仅供**可信内网**使用（请勿将端口映射到公网）
 
 - 服务地址：`http://<抖小云IP>:10101`（NAS 部署后即 `http://10.1.10.21:10101`）
 - 数据格式：JSON（UTF-8）
@@ -11,56 +11,7 @@
 
 ---
 
-## 一、博主清单接口
-
-```
-GET /api/follow/open/uperids
-```
-
-### 返回字段说明
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| uperName | string | 博主昵称 |
-| uperId | string | 博主数字账号 ID（uid） |
-| douyinNo | string | 抖音号 |
-| secUid | string | 博主 sec_uid（`MS4wLjABAAAA...` 长串，用于抖音开放接口定位博主） |
-| openSync | bool | 是否开启同步 |
-| lastSyncTime | string | 该博主最后同步时间 |
-
-### 调用示例
-
-**curl**
-```bash
-curl http://10.1.10.21:10101/api/follow/open/uperids
-```
-
-**Python**
-```python
-import requests
-data = requests.get("http://10.1.10.21:10101/api/follow/open/uperids", timeout=10).json()
-print(len(data), "个博主")
-for u in data[:3]:
-    print(u["uperName"], u["uperId"], u["douyinNo"], u["secUid"][:20])
-```
-
-**返回示例**（截取）
-```json
-[
-  {
-    "uperName": "耳火Fendy⭐",
-    "uperId": "95845330308",
-    "douyinNo": "613584202",
-    "secUid": "MS4wLjABAAAA09vRitmlDkWCests2XIkj2kLMzb...",
-    "openSync": true,
-    "lastSyncTime": "2026-09-01 22:15:03"
-  }
-]
-```
-
----
-
-## 二、视频清单接口
+## 视频清单接口（唯一主接口）
 
 ```
 GET /api/follow/open/videos
@@ -217,7 +168,7 @@ curl "http://10.1.10.21:10101/api/follow/open/videos?withSubtitle=true&pageSize=
 
 ---
 
-## 三、常见问题
+## 常见问题
 
 | 问题 | 说明 |
 |---|---|
@@ -230,3 +181,54 @@ curl "http://10.1.10.21:10101/api/follow/open/videos?withSubtitle=true&pageSize=
 | 带字幕的响应较大 | 字幕默认不返回（快）；`withSubtitle=true` 逐条读盘，页越大越慢（100条约7s），按需开启 |
 | 一次拉多少合适 | 全量（几千条）一次拉即可；建议接入方做增量（syncStart）定时拉取 |
 | 数据多久更新 | 抖小云每 30 分钟同步一轮；五项统计每天 05:30 回填刷新 |
+
+---
+
+## 附录：博主清单接口（补充）
+
+```
+GET /api/follow/open/uperids
+```
+
+### 返回字段说明
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| uperName | string | 博主昵称 |
+| uperId | string | 博主数字账号 ID（uid） |
+| douyinNo | string | 抖音号 |
+| secUid | string | 博主 sec_uid（`MS4wLjABAAAA...` 长串，用于抖音开放接口定位博主） |
+| openSync | bool | 是否开启同步 |
+| lastSyncTime | string | 该博主最后同步时间 |
+
+### 调用示例
+
+**curl**
+```bash
+curl http://10.1.10.21:10101/api/follow/open/uperids
+```
+
+**Python**
+```python
+import requests
+data = requests.get("http://10.1.10.21:10101/api/follow/open/uperids", timeout=10).json()
+print(len(data), "个博主")
+for u in data[:3]:
+    print(u["uperName"], u["uperId"], u["douyinNo"], u["secUid"][:20])
+```
+
+**返回示例**（截取）
+```json
+[
+  {
+    "uperName": "耳火Fendy⭐",
+    "uperId": "95845330308",
+    "douyinNo": "613584202",
+    "secUid": "MS4wLjABAAAA09vRitmlDkWCests2XIkj2kLMzb...",
+    "openSync": true,
+    "lastSyncTime": "2026-09-01 22:15:03"
+  }
+]
+```
+
+---
