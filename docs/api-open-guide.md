@@ -104,11 +104,16 @@ curl "http://10.1.10.21:10101/api/follow/open/videos?syncStart=2026-09-01%2000:0
 ```python
 import requests
 
-API = "http://10.1.10.21:10101/api/follow/open/videos"
-page, size, all_rows = 1, 500, []
+url = "http://10.1.10.21:10101/api/follow/open/videos"
 
+payload = {}          # 每轮翻页改这里：{'pageIndex': 2, 'pageSize': 500}
+headers = {}          # 本接口免登录，无需 Authorization
+
+all_rows, page = [], 1
 while True:
-    r = requests.get(API, params={"pageIndex": page, "pageSize": size}, timeout=30).json()
+    payload = {"pageIndex": page, "pageSize": 500}
+    response = requests.request("GET", url, headers=headers, params=payload, timeout=30)
+    r = response.json()
     all_rows.extend(r["data"])
     if len(all_rows) >= r["total"] or not r["data"]:
         break
@@ -132,6 +137,24 @@ curl "http://10.1.10.21:10101/api/follow/open/videos?syncStart=2026-09-01&syncEn
 **⑧ 带字幕全文**（默认不带；逐条读盘，页越大越慢）
 ```bash
 curl "http://10.1.10.21:10101/api/follow/open/videos?withSubtitle=true&pageSize=100"
+```
+
+**⑨ Python 标准写法**（url + payload + headers 的通用格式，改造自 TikHub 风格示例）
+```python
+import requests
+
+# 通用格式：url = 服务地址 + API路径，参数拼在 url 上或放 params
+url = "http://10.1.10.21:10101/api/follow/open/videos?syncStart=2026-09-01&syncEnd=2026-09-02"
+
+payload = {}                          # 本接口用 GET + params，无需请求体
+headers = {}                          # 免登录接口，无需 Authorization；需要时可加自定义头
+
+response = requests.request("GET", url, headers=headers, data=payload, timeout=30)
+print(response.text)                  # 原始 JSON 文本
+data = response.json()                # 解析为字典
+print(data["total"], "条")
+for row in data["data"]:
+    print(row["uperName"], row["diggCount"], row["videoId"])
 ```
 
 **返回示例**（⑦拉某天的口径，截取；subtitle 仅 withSubtitle=true 时非空）
@@ -211,7 +234,14 @@ curl http://10.1.10.21:10101/api/follow/open/uperids
 **Python**
 ```python
 import requests
-data = requests.get("http://10.1.10.21:10101/api/follow/open/uperids", timeout=10).json()
+
+url = "http://10.1.10.21:10101/api/follow/open/uperids"
+
+payload = {}
+headers = {}
+
+response = requests.request("GET", url, headers=headers, data=payload, timeout=10)
+data = response.json()   # 注意：本接口返回纯数组，没有 total 包装
 print(len(data), "个博主")
 for u in data[:3]:
     print(u["uperName"], u["uperId"], u["douyinNo"], u["secUid"][:20])
