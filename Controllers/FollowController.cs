@@ -49,7 +49,9 @@ namespace dy.net.Controllers
         /// uperId=博主ID精确 | uperName=博主名模糊 | syncStart/syncEnd=同步时间区间 | createStart/createEnd=发布时间区间
         /// minPlay/maxPlay minDigg/maxDigg minComment/maxComment minShare/maxShare minCollect/maxCollect=五项统计区间
         /// viedoType=来源(1喜欢2收藏3关注6合集7短剧5自定义收藏,数字) | keyword=标题关键词模糊
-        /// pageIndex/pageSize=分页(默认全量,给了pageSize才分页,上限500防误拉全库);orderBy=syncTime|createTime|digg(默认syncTime倒序)
+        /// 分页(2026-09-02起):默认每页100条、按同步时间从近到远;翻页传pageIndex;全量传pageSize=0(慎用,响应大);
+        ///   pageSize上限500 | orderBy=syncTime(默认)|createTime|digg|play|collect 均倒序
+        /// withSubtitle=true 才返回字幕全文(每条要读盘,全量模式下尤其慢,默认不带)
         /// secUid 双路兜底:视频自身列 → dy_follow 关联 → null。</summary>
         [HttpGet("open/videos")]
         [AllowAnonymous]
@@ -63,7 +65,8 @@ namespace dy.net.Controllers
             [FromQuery] long? minShare, [FromQuery] long? maxShare,
             [FromQuery] long? minCollect, [FromQuery] long? maxCollect,
             [FromQuery] int? viedoType,
-            [FromQuery] int pageIndex = 1, [FromQuery] int pageSize = 0,
+            [FromQuery] bool withSubtitle = false,
+            [FromQuery] int pageIndex = 1, [FromQuery] int pageSize = 100,
             [FromQuery] string orderBy = "syncTime")
         {
             var videos = await douyinVideoService.GetAllAsync();
@@ -120,11 +123,48 @@ namespace dy.net.Controllers
             };
 
             var total = query.Count();
-            // 分页:pageSize>0 才启用(默认全量兼容旧行为),上限500防误操作拉爆内存
+            // 分页语义(2026-09-02):默认100条/页;pageSize=0显式全量;上限500。
+            // 默认分页而非全量——全量含字幕曾实测37s(同步读盘×5700条),3并发75s拖垮线程池
             if (pageSize > 0)
             {
                 if (pageSize > 500) pageSize = 500;
                 query = query.Skip((pageIndex - 1) * pageSize).Take(pageSize);
+            }
+
+            var pageList = query.ToList();
+            var data = new List<object>(pageList.Count);
+            foreach (var v in pageList)
+            {
+                uperMap.TryGetValue(v.AuthorId, out var f);
+                data.Add(new
+                {
+                    uperName = f?.UperName ?? v.Author,
+                    // 双路兜底:视频自身列(2026-08-31起入库随响应写入,喜欢/收藏来源也有) → dy_follow关联 → null
+                    douyinNo = v.AuthorDouyinNo ?? f?.DouyinNo,
+                    secUid = v.AuthorSecUid ?? f?.SecUid,
+                    uperId = v.AuthorId,
+                    title = v.VideoTitle,
+                    videoId = v.AwemeId,
+                    playCount = v.PlayCount ?? 0,
+                    diggCount = v.DiggCount ?? 0,
+                    commentCount = v.CommentCount ?? 0,
+                    shareCount = v.ShareCount ?? 0,
+                    collectCount = v.CollectCount ?? 0,
+                    viedoType = v.ViedoType.ToString(),
+                    syncTime = v.SyncTime == default ? null : v.SyncTime.ToString("yyyy-MM-dd HH:mm:ss"),
+                    createTime = v.CreateTime == default ? null : v.CreateTime.ToString("yyyy-MM-dd HH:mm:ss"),
+                    // 2026-09-02 补齐对齐飞书18列:以下四项让本接口单请求=飞书多维表格同款数据
+                    id = v.Id,                                          // 库内雪花Id(内网播放接口的键)
+                    lanPlayUrl = string.IsNullOrWhiteSpace(lanBase) || string.IsNullOrWhiteSpace(v.VideoSavePath)
+                        ? string.Empty
+                        : $"{lanBase.TrimEnd('/')}/api/video/play/{v.Id}", // 免登录流式播放直链
+                    playUrl = string.IsNullOrWhiteSpace(v.AwemeId) ? string.Empty : $"https://www.douyin.com/video/{v.AwemeId}",
+                    dyUser = v.DyUser ?? string.Empty,                   // CK名称(哪个账号同步的)
+                    // 字幕全文默认不带(逐条读盘慢);withSubtitle=true 显式要才读——异步await,不再同步阻塞线程
+                    subtitle = withSubtitle && !string.IsNullOrWhiteSpace(v.SubtitleSavePath)
+                        ? await dy.net.utils.SubtitleTextReader.ReadAsync(v.SubtitleSavePath)
+                        : string.Empty
+                });
             }
 
             return Ok(new
@@ -132,44 +172,8 @@ namespace dy.net.Controllers
                 total,
                 pageIndex = pageSize > 0 ? pageIndex : (int?)null,
                 pageSize = pageSize > 0 ? pageSize : (int?)null,
-                data = query.Select(v =>
-                {
-                    uperMap.TryGetValue(v.AuthorId, out var f);
-                    return new
-                    {
-                        uperName = f?.UperName ?? v.Author,
-                        // 双路兜底:视频自身列(2026-08-31起入库随响应写入,喜欢/收藏来源也有) → dy_follow关联 → null
-                        douyinNo = v.AuthorDouyinNo ?? f?.DouyinNo,
-                        secUid = v.AuthorSecUid ?? f?.SecUid,
-                        uperId = v.AuthorId,
-                        title = v.VideoTitle,
-                        videoId = v.AwemeId,
-                        playCount = v.PlayCount ?? 0,
-                        diggCount = v.DiggCount ?? 0,
-                        commentCount = v.CommentCount ?? 0,
-                        shareCount = v.ShareCount ?? 0,
-                        collectCount = v.CollectCount ?? 0,
-                        viedoType = v.ViedoType.ToString(),
-                        syncTime = v.SyncTime == default ? null : v.SyncTime.ToString("yyyy-MM-dd HH:mm:ss"),
-                        createTime = v.CreateTime == default ? null : v.CreateTime.ToString("yyyy-MM-dd HH:mm:ss"),
-                        // 2026-09-02 补齐对齐飞书18列:以下四项让本接口单请求=飞书多维表格同款数据
-                        id = v.Id,                                          // 库内雪花Id(内网播放接口的键)
-                        lanPlayUrl = string.IsNullOrWhiteSpace(lanBase) || string.IsNullOrWhiteSpace(v.VideoSavePath)
-                            ? string.Empty
-                            : $"{lanBase.TrimEnd('/')}/api/video/play/{v.Id}", // 免登录流式播放直链
-                        playUrl = string.IsNullOrWhiteSpace(v.AwemeId) ? string.Empty : $"https://www.douyin.com/video/{v.AwemeId}",
-                        dyUser = v.DyUser ?? string.Empty,                   // CK名称(哪个账号同步的)
-                        subtitle = string.IsNullOrWhiteSpace(v.SubtitleSavePath) ? string.Empty : SubtitleText(v.SubtitleSavePath)
-                    };
-                }).ToList()
+                data
             });
-        }
-
-        /// <summary>读字幕全文(优先.txt纯文本,退化.srt;失败/超长截断)——与飞书推送/Excel导出同源逻辑。</summary>
-        private static string SubtitleText(string path)
-        {
-            var text = dy.net.utils.SubtitleTextReader.ReadAsync(path).GetAwaiter().GetResult();
-            return text ?? string.Empty;
         }
 
 
