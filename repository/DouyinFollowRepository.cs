@@ -157,7 +157,9 @@ namespace dy.net.repository
                     bool signatureChanged = !string.Equals(existFollow.Signature, newFollow.Signature, StringComparison.Ordinal);
                     bool enterpriseChanged = !string.Equals(existFollow.Enterprise, newFollow.EnterpriseVerifyReason, StringComparison.Ordinal);
                     bool uperAvatarChanged = !string.Equals(existFollow.UperAvatar, newFollow.Avatar?.UrlList?.FirstOrDefault() ?? "", StringComparison.Ordinal);
-                    bool dyNoChanged = !string.Equals(existFollow.DouyinNo, newFollow.ShortId ?? "", StringComparison.Ordinal);
+                    // 2026-09-03:抖音号改存 unique_id(App主页显示、可搜索;short_id 数字号搜不到)——空回落 short_id
+                    var newDyNo = !string.IsNullOrWhiteSpace(newFollow.UniqueId) ? newFollow.UniqueId : newFollow.ShortId;
+                    bool dyNoChanged = !string.Equals(existFollow.DouyinNo, newDyNo ?? "", StringComparison.Ordinal);
 
                     if (nameChanged || signatureChanged || uperAvatarChanged || enterpriseChanged|| dyNoChanged)
                     {
@@ -171,7 +173,7 @@ namespace dy.net.repository
                             Enterprise = newFollow.EnterpriseVerifyReason,
                             UperAvatar = newFollow.Avatar?.UrlList?.FirstOrDefault() ?? "",
                             LastSyncTime = DateTime.UtcNow,// 更新同步时间
-                            DouyinNo = newFollow.ShortId
+                            DouyinNo = newDyNo
                         };
                         if (string.IsNullOrWhiteSpace(existFollow.SavePath))
                         {
@@ -197,7 +199,7 @@ namespace dy.net.repository
                         Signature = follow.Signature,
                         UperId = follow.UperId,
                         SavePath = DouyinFileNameHelper.SanitizeLinuxFileName(follow.NickName, follow.UperId, true),
-                        DouyinNo = follow.ShortId
+                        DouyinNo = !string.IsNullOrWhiteSpace(follow.UniqueId) ? follow.UniqueId : follow.ShortId // unique_id优先(2026-09-03)
                     };
 
                     bool batchAddSuccess = await BatchProcessAsync(toAddFollows, 200,

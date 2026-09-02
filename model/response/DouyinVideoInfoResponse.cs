@@ -416,6 +416,10 @@ namespace dy.net.model.response
         [JsonProperty("short_id")]
         public string ShortId { get; set; }
 
+        // 用户自定义抖音号(可搜索);列表接口常为null,detail接口有值——入库优先于short_id
+        [JsonProperty("unique_id")]
+        public string UniqueId { get; set; }
+
         [JsonProperty("uid")]
         public string Uid { get; set; }
     }

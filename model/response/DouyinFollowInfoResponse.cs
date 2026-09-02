@@ -115,6 +115,10 @@ namespace dy.net.model.response
         [JsonProperty("short_id")]
         public string ShortId { get; set; }
 
+        /// <summary>用户自定义抖音号(App主页显示/可搜索的那个);未设置时与short_id相同或为空。</summary>
+        [JsonProperty("unique_id")]
+        public string UniqueId { get; set; }
+
         /// <summary>
         /// 签名
         /// </summary>

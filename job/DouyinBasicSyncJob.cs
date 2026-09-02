@@ -1526,11 +1526,13 @@ namespace dy.net.job
                 Author = item.Author?.Nickname,
                 AuthorId = item.Author?.Uid,
                 AuthorSecUid = item.Author?.SecUid,        // 2026-08-31:随取数响应落库,喜欢/收藏来源也能有
-                // ⚠️列表接口author.short_id恒为null(实测仅detail接口返回)——回落:followed参数(关注来源)→dy_follow按AuthorId查(其他来源)
-                AuthorDouyinNo = !string.IsNullOrWhiteSpace(item.Author?.ShortId)
-                    ? item.Author.ShortId
+                // ⚠️列表接口author的short_id/unique_id均恒为null(实测仅detail接口返回)——
+                // 回落链:响应unique_id(可搜索的自定义号,2026-09-03优先)→followed参数/查dy_follow(已改存unique_id)→响应short_id数字号兜底
+                AuthorDouyinNo = !string.IsNullOrWhiteSpace(item.Author?.UniqueId)
+                    ? item.Author.UniqueId
                     : followed?.DouyinNo
-                      ?? (await douyinFollowService.GetByUperId(item.Author?.Uid, cookie.MyUserId))?.DouyinNo,
+                      ?? (await douyinFollowService.GetByUperId(item.Author?.Uid, cookie.MyUserId))?.DouyinNo
+                      ?? item.Author?.ShortId,
                 AuthorAvatar = avatorPath,
                 AuthorAvatarUrl = item.Author.AvatarLarger?.UrlList?.FirstOrDefault() ?? item.Author.AvatarThumb?.UrlList?.FirstOrDefault(),
                 CreateTime = DateTimeUtil.Convert10BitTimestamp(item.CreateTime),
